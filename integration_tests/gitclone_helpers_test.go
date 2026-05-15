@@ -12,8 +12,9 @@ import (
 // runGit runs a git command in dir and returns trimmed stdout.
 func runGit(t *testing.T, dir string, args ...string) string {
 	t.Helper()
+	fullArgs := append([]string{"-c", "safe.directory=" + dir}, args...)
 	stdout, stderr, code, err := cliwrappers.NewCliExecutor().Execute(cliwrappers.Cmd{
-		Name: "git", Args: args, Dir: dir,
+		Name: "git", Args: fullArgs, Dir: dir,
 	})
 	if err != nil || code != 0 {
 		t.Fatalf("git %s failed (exit %d): %v\nstderr: %s", args[0], code, err, stderr)
