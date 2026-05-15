@@ -175,8 +175,13 @@ func TestGitClone(t *testing.T) {
 			setup: func(t *testing.T, workspaceDir string) map[string]string {
 				repo := createLocalTestRepo(t)
 				bareCloneToPath(t, repo.Path, filepath.Join(workspaceDir, "repo.git"))
-				Expect(os.MkdirAll(filepath.Join(workspaceDir, "out"), 0755)).To(Succeed())
-				Expect(os.WriteFile(filepath.Join(workspaceDir, "out", "stale.txt"), []byte("stale"), 0644)).To(Succeed())
+				outDir := filepath.Join(workspaceDir, "out")
+				Expect(os.MkdirAll(outDir, 0755)).To(Succeed())
+				// Chmod to 0777 to allow the container user to delete the stale.txt file.
+				// Use a separate Chmod rather than passing 0777 to MkdirAll,
+				// because MkdirAll respects umask so the result may not actually be 0777.
+				Expect(os.Chmod(outDir, 0777)).To(Succeed())
+				Expect(os.WriteFile(filepath.Join(outDir, "stale.txt"), []byte("stale"), 0644)).To(Succeed())
 				return nil
 			},
 			url:  "file:///workspace/repo.git",
