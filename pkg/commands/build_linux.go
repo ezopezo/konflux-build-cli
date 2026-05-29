@@ -3,12 +3,16 @@
 package commands
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 
 	cliWrappers "github.com/konflux-ci/konflux-build-cli/pkg/cliwrappers"
+	l "github.com/konflux-ci/konflux-build-cli/pkg/logger"
 	"golang.org/x/sys/unix"
 )
+
+const rhsmSecretsDir = "/usr/share/rhel/secrets" // #nosec G101 -- not a credential
 
 // Re-execute the running executable (with the same args) in a user namespace.
 //
@@ -52,4 +56,26 @@ func (c *Build) reExecInUserNamespace() error {
 
 	env := append(os.Environ(), envVarInUserNamespace+"=1")
 	return unix.Exec(binary, append([]string{name}, args...), env)
+}
+
+// Mount a tmpfs over /usr/share/rhel/secrets to disable RHSM host integration.
+//
+// Note that this method runs after the CLI re-execs itself in a mount namespace,
+// so there's no need to clean up by unmounting afterwards.
+func (c *Build) disableRHSMHostIntegration() error {
+	if os.Getenv(envVarInUserNamespace) == "" {
+		// Avoid causing unit tests to fail
+		return nil
+	}
+	if _, err := os.Stat(rhsmSecretsDir); err == nil {
+		l.Logger.Debugf("Mounting tmpfs over %s to disable RHSM host integration", rhsmSecretsDir)
+		if err := unix.Mount("tmpfs", rhsmSecretsDir, "tmpfs", 0, ""); err != nil {
+			return fmt.Errorf("mounting tmpfs over %s: %w", rhsmSecretsDir, err)
+		}
+	} else {
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("checking existence of %s: %w", rhsmSecretsDir, err)
+		}
+	}
+	return nil
 }

@@ -19,8 +19,7 @@ non-flag argument (or after --) is passed to the command as-is.`,
 	Args:    cobra.ArbitraryArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		loopbackUp, _ := cmd.Flags().GetBool("loopback-up")
-		disableRHSMHostIntegration, _ := cmd.Flags().GetBool("disable-rhsm-host-integration")
-		if err := commands.RunInUserNamespace(loopbackUp, disableRHSMHostIntegration, args); err != nil {
+		if err := commands.RunInUserNamespace(loopbackUp, args); err != nil {
 			l.Logger.Fatal(err)
 		}
 	},
@@ -29,9 +28,4 @@ non-flag argument (or after --) is passed to the command as-is.`,
 func init() {
 	InUserNamespaceCmd.Flags().SetInterspersed(false)
 	InUserNamespaceCmd.Flags().Bool("loopback-up", false, "Bring up the loopback interface before executing the command")
-	InUserNamespaceCmd.Flags().Bool(
-		"disable-rhsm-host-integration",
-		false,
-		"If /usr/share/rhel/secrets exists, mount a tmpfs over it to disable RHSM host integration",
-	)
 }

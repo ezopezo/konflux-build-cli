@@ -718,6 +718,13 @@ func (c *Build) run() error {
 		return err
 	}
 
+	// The auto-magical host integration breaks our explicit RHSM support, disable it.
+	// Technically, we only have to disable if the user requests RHSM features,
+	// but let's disable unconditionally because the magic makes builds less predictable.
+	if err := c.disableRHSMHostIntegration(); err != nil {
+		return fmt.Errorf("disabling RHSM host integration: %w", err)
+	}
+
 	if err := c.buildImage(); err != nil {
 		return err
 	}
@@ -2331,7 +2338,19 @@ func (c *Build) buildImage() (err error) {
 		CapDrop:          c.Params.CapDrop,
 		Devices:          c.Params.Devices,
 		Ulimits:          c.Params.Ulimits,
-		Wrapper:          c.chooseBuildahWrappers(),
+	}
+	if c.Params.Hermetic {
+		wrapper := cliWrappers.JoinWrappers(
+			// We want to build entirely without network access, including ADD instructions.
+			// Buildah has a --network=none flag, but it only affects RUN instructions, not ADD.
+			// And it doesn't work with BUILDAH_ISOLATION=chroot, the typical setup in Konflux.
+			// Instead, we create a network namespace manually using 'unshare --net'.
+			c.CliWrappers.Unshare.WithArgs("--net"),
+			// But bring up the loopback interface inside this namespace.
+			// Mainly needed for Bazel builds, Bazel runs a server on localhost.
+			c.CliWrappers.SelfInUserNamespace.WithArgs("--loopback-up"),
+		)
+		buildArgs.Wrapper = &wrapper
 	}
 	if c.Params.WorkdirMount != "" {
 		buildArgs.Volumes = append(buildArgs.Volumes, cliWrappers.BuildahVolume{
@@ -2351,27 +2370,6 @@ func (c *Build) buildImage() (err error) {
 
 	l.Logger.Info("Build completed successfully")
 	return nil
-}
-
-func (c *Build) chooseBuildahWrappers() *cliWrappers.WrapperCmd {
-	var wrapper cliWrappers.WrapperCmd
-
-	if c.Params.Hermetic {
-		wrapper = cliWrappers.JoinWrappers(
-			// We want to build entirely without network access, including ADD instructions.
-			// Buildah has a --network=none flag, but it only affects RUN instructions, not ADD.
-			// And it doesn't work with BUILDAH_ISOLATION=chroot, the typical setup in Konflux.
-			// Instead, we create a network namespace manually using 'unshare --net'.
-			c.CliWrappers.Unshare.WithArgs("--net"),
-			// But bring up the loopback interface inside this namespace.
-			// Mainly needed for Bazel builds, Bazel runs a server on localhost.
-			c.CliWrappers.SelfInUserNamespace.WithArgs("--loopback-up", "--disable-rhsm-host-integration"),
-		)
-	} else {
-		wrapper = c.CliWrappers.SelfInUserNamespace.WithArgs("--disable-rhsm-host-integration")
-	}
-
-	return &wrapper
 }
 
 func (c *Build) pushImage() (string, error) {
