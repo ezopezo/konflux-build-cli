@@ -1221,7 +1221,7 @@ func Test_Build_Run(t *testing.T) {
 			return "", nil
 		}
 
-		err := c.Run()
+		err := c.run()
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(isBuildCalled).To(BeTrue())
 		g.Expect(isPushCalled).To(BeTrue())
@@ -1255,7 +1255,7 @@ func Test_Build_Run(t *testing.T) {
 			return "", nil
 		}
 
-		err := c.Run()
+		err := c.run()
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(isBuildCalled).To(BeTrue())
 		g.Expect(isPushCalled).To(BeFalse())
@@ -1279,7 +1279,7 @@ func Test_Build_Run(t *testing.T) {
 			return nil
 		}
 
-		err := c.Run()
+		err := c.run()
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(isBuildCalled).To(BeTrue())
 	})
@@ -1294,7 +1294,7 @@ func Test_Build_Run(t *testing.T) {
 		})
 		c.tempWorkdir = filepath.Join(tempDir, "tempWorkdir")
 
-		err := c.Run()
+		err := c.run()
 		g.Expect(err).ToNot(HaveOccurred())
 
 		g.Expect(c.tempWorkdir).ToNot(BeAnExistingFile(), "tempWorkdir should have been deleted")
@@ -1307,7 +1307,7 @@ func Test_Build_Run(t *testing.T) {
 			return errors.New("buildah build failed")
 		}
 
-		err := c.Run()
+		err := c.run()
 		g.Expect(err).To(HaveOccurred())
 		g.Expect(err.Error()).To(ContainSubstring("buildah build failed"))
 	})
@@ -1319,7 +1319,7 @@ func Test_Build_Run(t *testing.T) {
 			return "", errors.New("buildah push failed")
 		}
 
-		err := c.Run()
+		err := c.run()
 		g.Expect(err).To(HaveOccurred())
 		g.Expect(err.Error()).To(ContainSubstring("buildah push failed"))
 	})
@@ -1328,7 +1328,7 @@ func Test_Build_Run(t *testing.T) {
 		beforeEach()
 		c.Params.OutputRef = "invalid//image"
 
-		err := c.Run()
+		err := c.run()
 		g.Expect(err).To(HaveOccurred())
 	})
 
@@ -1337,7 +1337,7 @@ func Test_Build_Run(t *testing.T) {
 		// Remove the Containerfile
 		os.Remove(filepath.Join(c.Params.Context, "Containerfile"))
 
-		err := c.Run()
+		err := c.run()
 		g.Expect(err).To(HaveOccurred())
 		g.Expect(err.Error()).To(ContainSubstring("containerfile does not exist"))
 	})
@@ -1351,7 +1351,7 @@ func Test_Build_Run(t *testing.T) {
 			return "", errors.New("failed to create results json")
 		}
 
-		err := c.Run()
+		err := c.run()
 		g.Expect(err).To(HaveOccurred())
 		g.Expect(err.Error()).To(ContainSubstring("failed to create results json"))
 		g.Expect(isCreateResultJsonCalled).To(BeTrue())
@@ -1405,7 +1405,7 @@ func Test_Build_Run(t *testing.T) {
 			return nil
 		}
 
-		err := c.Run()
+		err := c.run()
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(buildCalled).To(BeTrue())
 
@@ -1462,7 +1462,7 @@ func Test_Build_Run(t *testing.T) {
 			return nil
 		}
 
-		err := c.Run()
+		err := c.run()
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(buildCalled).To(BeTrue())
 	})
@@ -1540,7 +1540,7 @@ func Test_Build_Run(t *testing.T) {
 			return nil
 		}
 
-		err := c.Run()
+		err := c.run()
 		g.Expect(err).ToNot(HaveOccurred())
 
 		g.Expect(buildCalled).To(BeTrue())
@@ -1582,7 +1582,7 @@ func Test_Build_Run(t *testing.T) {
 			return "sha256:abc", nil
 		}
 
-		err := c.Run()
+		err := c.run()
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(pullCalled).To(BeTrue())
 		g.Expect(buildCalled).To(BeTrue())
@@ -1618,7 +1618,7 @@ func Test_Build_Run(t *testing.T) {
 			return "sha256:abc", nil
 		}
 
-		err := c.Run()
+		err := c.run()
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(pullCalled).To(BeTrue())
 		g.Expect(buildCalled).To(BeTrue())
@@ -1636,7 +1636,7 @@ func Test_Build_Run(t *testing.T) {
 			return nil
 		}
 
-		err := c.Run()
+		err := c.run()
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(buildCalled).To(BeTrue())
 	})
@@ -1658,7 +1658,7 @@ func Test_Build_Run(t *testing.T) {
 			return nil
 		}
 
-		err := c.Run()
+		err := c.run()
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(buildCalled).To(BeTrue())
 	})
@@ -1674,7 +1674,7 @@ func Test_Build_Run(t *testing.T) {
 			return nil
 		}
 
-		err := c.Run()
+		err := c.run()
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(buildCalled).To(BeTrue())
 	})
