@@ -150,6 +150,19 @@ func (m *mockSubscriptionManagerCli) Unregister() {
 	}
 }
 
+var _ cliwrappers.SyftCliInterface = &mockSyftCli{}
+
+type mockSyftCli struct {
+	ScanFunc func(args *cliwrappers.SyftScanArgs) (string, error)
+}
+
+func (m *mockSyftCli) Scan(args *cliwrappers.SyftScanArgs) (string, error) {
+	if m.ScanFunc != nil {
+		return m.ScanFunc(args)
+	}
+	return "", nil
+}
+
 var _ cliwrappers.OrasCliInterface = &mockOrasCli{}
 
 type mockOrasCli struct {
