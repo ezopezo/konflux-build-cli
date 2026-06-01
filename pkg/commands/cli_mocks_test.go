@@ -42,6 +42,9 @@ type mockBuildahCli struct {
 	ManifestPushFunc    func(args *cliwrappers.BuildahManifestPushArgs) (string, error)
 	ImagesFunc          func(args *cliwrappers.BuildahImagesArgs) (string, error)
 	ImagesJsonFunc      func(args *cliwrappers.BuildahImagesArgs) ([]cliwrappers.BuildahImagesEntry, error)
+	FromFunc            func(image string) (string, error)
+	RmFunc              func(container string) error
+	MountFunc           func(container string) (string, error)
 }
 
 func (m *mockBuildahCli) Build(args *cliwrappers.BuildahBuildArgs) error {
@@ -128,6 +131,27 @@ func (m *mockBuildahCli) ImagesJson(args *cliwrappers.BuildahImagesArgs) ([]cliw
 		return m.ImagesJsonFunc(args)
 	}
 	return nil, nil
+}
+
+func (m *mockBuildahCli) From(image string) (string, error) {
+	if m.FromFunc != nil {
+		return m.FromFunc(image)
+	}
+	return "", nil
+}
+
+func (m *mockBuildahCli) Rm(container string) error {
+	if m.RmFunc != nil {
+		return m.RmFunc(container)
+	}
+	return nil
+}
+
+func (m *mockBuildahCli) Mount(container string) (string, error) {
+	if m.MountFunc != nil {
+		return m.MountFunc(container)
+	}
+	return "", nil
 }
 
 var _ cliwrappers.SubscriptionManagerCliInterface = &mockSubscriptionManagerCli{}

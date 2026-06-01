@@ -1632,3 +1632,133 @@ func TestBuildahCli_ImagesJson(t *testing.T) {
 		g.Expect(entries).To(BeNil())
 	})
 }
+
+func TestBuildahCli_From(t *testing.T) {
+	g := NewWithT(t)
+
+	const image = "localhost/image:tag"
+	const containerName = "image-working-container"
+
+	t.Run("should create a working container and return the container name", func(t *testing.T) {
+		buildahCli, executor := setupBuildahCli()
+		var capturedArgs []string
+		executor.executeFunc = func(cmd cliwrappers.Cmd) (string, string, int, error) {
+			g.Expect(cmd.Name).To(Equal("buildah"))
+			capturedArgs = cmd.Args
+			return containerName + "\n", "", 0, nil
+		}
+
+		result, err := buildahCli.From(image)
+
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(capturedArgs).To(Equal([]string{"from", image}))
+		g.Expect(result).To(Equal(containerName))
+	})
+
+	t.Run("should error if image is empty", func(t *testing.T) {
+		buildahCli, _ := setupBuildahCli()
+
+		_, err := buildahCli.From("")
+
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(err.Error()).To(ContainSubstring("image is empty"))
+	})
+
+	t.Run("should error if buildah execution fails", func(t *testing.T) {
+		buildahCli, executor := setupBuildahCli()
+		executor.executeFunc = func(cmd cliwrappers.Cmd) (string, string, int, error) {
+			return "", "", 1, errors.New("failed to create container")
+		}
+
+		_, err := buildahCli.From(image)
+
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(err.Error()).To(Equal("failed to create container"))
+	})
+}
+
+func TestBuildahCli_Rm(t *testing.T) {
+	g := NewWithT(t)
+
+	const container = "image-working-container"
+
+	t.Run("should remove a working container", func(t *testing.T) {
+		buildahCli, executor := setupBuildahCli()
+		var capturedArgs []string
+		executor.executeFunc = func(cmd cliwrappers.Cmd) (string, string, int, error) {
+			g.Expect(cmd.Name).To(Equal("buildah"))
+			capturedArgs = cmd.Args
+			return "", "", 0, nil
+		}
+
+		err := buildahCli.Rm(container)
+
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(capturedArgs).To(Equal([]string{"rm", container}))
+	})
+
+	t.Run("should error if container is empty", func(t *testing.T) {
+		buildahCli, _ := setupBuildahCli()
+
+		err := buildahCli.Rm("")
+
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(err.Error()).To(ContainSubstring("container is empty"))
+	})
+
+	t.Run("should error if buildah execution fails", func(t *testing.T) {
+		buildahCli, executor := setupBuildahCli()
+		executor.executeFunc = func(cmd cliwrappers.Cmd) (string, string, int, error) {
+			return "", "", 1, errors.New("failed to remove container")
+		}
+
+		err := buildahCli.Rm(container)
+
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(err.Error()).To(Equal("failed to remove container"))
+	})
+}
+
+func TestBuildahCli_Mount(t *testing.T) {
+	g := NewWithT(t)
+
+	const container = "image-working-container"
+	const mountPoint = "/var/tmp/containers/overlay/abc123/merged"
+
+	t.Run("should mount a container and return the mount point", func(t *testing.T) {
+		buildahCli, executor := setupBuildahCli()
+		var capturedArgs []string
+		executor.executeFunc = func(cmd cliwrappers.Cmd) (string, string, int, error) {
+			g.Expect(cmd.Name).To(Equal("buildah"))
+			capturedArgs = cmd.Args
+			return mountPoint + "\n", "", 0, nil
+		}
+
+		result, err := buildahCli.Mount(container)
+
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(capturedArgs).To(Equal([]string{"mount", container}))
+		g.Expect(result).To(Equal(mountPoint))
+	})
+
+	t.Run("should error if container is empty", func(t *testing.T) {
+		buildahCli, _ := setupBuildahCli()
+
+		_, err := buildahCli.Mount("")
+
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(err.Error()).To(ContainSubstring("container is empty"))
+	})
+
+	t.Run("should error if buildah execution fails", func(t *testing.T) {
+		buildahCli, executor := setupBuildahCli()
+		executor.executeFunc = func(cmd cliwrappers.Cmd) (string, string, int, error) {
+			return "", "", 1, errors.New("failed to mount container")
+		}
+
+		_, err := buildahCli.Mount(container)
+
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(err.Error()).To(Equal("failed to mount container"))
+	})
+}

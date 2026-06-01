@@ -31,6 +31,9 @@ type BuildahCliInterface interface {
 	ManifestAdd(args *BuildahManifestAddArgs) error
 	ManifestInspect(args *BuildahManifestInspectArgs) (string, error)
 	ManifestPush(args *BuildahManifestPushArgs) (string, error)
+	From(image string) (string, error)
+	Rm(container string) error
+	Mount(container string) (string, error)
 }
 
 var _ BuildahCliInterface = &BuildahCli{}
@@ -762,4 +765,70 @@ func (b *BuildahCli) ManifestPush(args *BuildahManifestPushArgs) (string, error)
 
 	digest := strings.TrimSpace(string(content))
 	return digest, nil
+}
+
+// Create a new working container from an image. Return the container name.
+func (b *BuildahCli) From(image string) (string, error) {
+	if image == "" {
+		return "", errors.New("image is empty")
+	}
+
+	buildahArgs := []string{"from", image}
+
+	buildahLog.Debugf("Running command:\n%s", shellJoin("buildah", buildahArgs...))
+
+	stdout, stderr, _, err := b.Executor.Execute(Command("buildah", buildahArgs...))
+	if err != nil {
+		buildahLog.Errorf("buildah from failed: %s", err.Error())
+		if stderr != "" {
+			buildahLog.Errorf("stderr:\n%s", stderr)
+		}
+		return "", err
+	}
+
+	return strings.TrimSpace(stdout), nil
+}
+
+// Remove a working container.
+func (b *BuildahCli) Rm(container string) error {
+	if container == "" {
+		return errors.New("container is empty")
+	}
+
+	buildahArgs := []string{"rm", container}
+
+	buildahLog.Debugf("Running command:\n%s", shellJoin("buildah", buildahArgs...))
+
+	_, stderr, _, err := b.Executor.Execute(Command("buildah", buildahArgs...))
+	if err != nil {
+		buildahLog.Errorf("buildah rm failed: %s", err.Error())
+		if stderr != "" {
+			buildahLog.Errorf("stderr:\n%s", stderr)
+		}
+		return err
+	}
+
+	return nil
+}
+
+// Mount a working container's root filesystem. Return the mount point path.
+func (b *BuildahCli) Mount(container string) (string, error) {
+	if container == "" {
+		return "", errors.New("container is empty")
+	}
+
+	buildahArgs := []string{"mount", container}
+
+	buildahLog.Debugf("Running command:\n%s", shellJoin("buildah", buildahArgs...))
+
+	stdout, stderr, _, err := b.Executor.Execute(Command("buildah", buildahArgs...))
+	if err != nil {
+		buildahLog.Errorf("buildah mount failed: %s", err.Error())
+		if stderr != "" {
+			buildahLog.Errorf("stderr:\n%s", stderr)
+		}
+		return "", err
+	}
+
+	return strings.TrimSpace(stdout), nil
 }
