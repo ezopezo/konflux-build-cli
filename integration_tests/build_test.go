@@ -3387,6 +3387,12 @@ EOF
 
 			Expect(stderr).To(ContainSubstring("OK: entitlements from host NOT mounted"))
 			Expect(stderr).To(ContainSubstring("OK: rhsm from host NOT mounted"))
+
+			// Verify that disabling RHSM host integration didn't modify the container FS
+			stdout, _, err := container.ExecuteCommandWithOutput("ls", "/usr/share/rhel/secrets")
+			Expect(err).ToNot(HaveOccurred())
+			lines := strings.Split(strings.TrimSpace(stdout), "\n")
+			Expect(lines).To(ContainElements("etc-pki-entitlement", "rhsm"))
 		})
 
 		t.Run("Entitlements", func(t *testing.T) {

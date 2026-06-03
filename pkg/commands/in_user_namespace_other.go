@@ -5,6 +5,6 @@ package commands
 import "fmt"
 
 // RunInUserNamespace serves no purpose on non-Linux platforms.
-func RunInUserNamespace(loopbackUp bool, disableRHSMHostIntegration bool, args []string) error {
+func RunInUserNamespace(loopbackUp bool, args []string) error {
 	return fmt.Errorf("in-user-namespace is only supported on Linux")
 }

@@ -57,6 +57,7 @@ linters:
   settings:
     gocritic:
       disabled-checks:
+        - elseif
         - ifElseChain
 
 formatters:

@@ -34,6 +34,8 @@ import (
 const (
 	defaultPrefetchOutputMount = "/tmp/.prefetch-output"
 	defaultPrefetchEnvMount    = "/tmp/.prefetch.env"
+
+	envVarInUserNamespace = "_KBC_IN_USER_NAMESPACE"
 )
 
 var BuildParamsConfig = map[string]common.Parameter{
@@ -644,8 +646,20 @@ func (c *Build) copyToTempWorkdir(filePath string) (copyPath string, err error) 
 	return outfile.Name(), err
 }
 
-// Run executes the command logic.
+// Run re-execs the command inside a user namespace if not already in one,
+// then delegates to run() for the actual logic.
 func (c *Build) Run() error {
+	if os.Getenv(envVarInUserNamespace) == "" {
+		err := c.reExecInUserNamespace()
+		if err != nil {
+			return fmt.Errorf("re-execing self in a user namespace: %w", err)
+		}
+		// unreachable; if reExecInUserNamespace succeeds it replaces the current process
+	}
+	return c.run()
+}
+
+func (c *Build) run() error {
 	common.LogParameters(BuildParamsConfig, c.Params)
 	if len(c.Params.ExtraArgs) > 0 {
 		l.Logger.Infof("[extra args]: %v", c.Params.ExtraArgs)
@@ -702,6 +716,13 @@ func (c *Build) Run() error {
 
 	if err := c.verifyBaseImageArchitectures(pulledImages); err != nil {
 		return err
+	}
+
+	// The auto-magical host integration breaks our explicit RHSM support, disable it.
+	// Technically, we only have to disable if the user requests RHSM features,
+	// but let's disable unconditionally because the magic makes builds less predictable.
+	if err := c.disableRHSMHostIntegration(); err != nil {
+		return fmt.Errorf("disabling RHSM host integration: %w", err)
 	}
 
 	if err := c.buildImage(); err != nil {
@@ -2317,7 +2338,19 @@ func (c *Build) buildImage() (err error) {
 		CapDrop:          c.Params.CapDrop,
 		Devices:          c.Params.Devices,
 		Ulimits:          c.Params.Ulimits,
-		Wrapper:          c.chooseBuildahWrappers(),
+	}
+	if c.Params.Hermetic {
+		wrapper := cliWrappers.JoinWrappers(
+			// We want to build entirely without network access, including ADD instructions.
+			// Buildah has a --network=none flag, but it only affects RUN instructions, not ADD.
+			// And it doesn't work with BUILDAH_ISOLATION=chroot, the typical setup in Konflux.
+			// Instead, we create a network namespace manually using 'unshare --net'.
+			c.CliWrappers.Unshare.WithArgs("--net"),
+			// But bring up the loopback interface inside this namespace.
+			// Mainly needed for Bazel builds, Bazel runs a server on localhost.
+			c.CliWrappers.SelfInUserNamespace.WithArgs("--loopback-up"),
+		)
+		buildArgs.Wrapper = &wrapper
 	}
 	if c.Params.WorkdirMount != "" {
 		buildArgs.Volumes = append(buildArgs.Volumes, cliWrappers.BuildahVolume{
@@ -2337,65 +2370,6 @@ func (c *Build) buildImage() (err error) {
 
 	l.Logger.Info("Build completed successfully")
 	return nil
-}
-
-// Choose how to wrap the 'buildah build' command.
-//
-// Rather than executing buildah directly, we wrap it in commands that manipulate user namespaces.
-// These are the main reasons:
-//
-//  1. Hermetic builds
-//
-//     We want the build to be executed entirely without network access, including ADD instructions.
-//     Buildah has a --network=none flag, but it only affects RUN instructions, not ADD.
-//     And it doesn't work with BUILDAH_ISOLATION=chroot, which is the typical setup in Konflux.
-//     Instead, we create a network namespace manually using 'unshare --net'.
-//
-//  2. Running as root with BUILDAH_ISOLATION=chroot
-//
-//     When running as root, chroot isolation skips creating a user namespace,
-//     so the root inside the container build is the actual root from the host.
-//     Creating a user namespace manually slightly improves security.
-func (c *Build) chooseBuildahWrappers() *cliWrappers.WrapperCmd {
-	var wrapper cliWrappers.WrapperCmd
-
-	if os.Getuid() == 0 {
-		// 'buildah unshare' doesn't work as root, use regular unshare.
-		// --map-root-user: Need to stay root, by default unshare would map to a non-root UID.
-		// --map-auto: Map subordinate UIDs and GIDs based on /etc/subuid and /etc/subgid.
-		//             By default, the namespace would only have 1 UID available.
-		//             Buildah needs more UIDs available to manipulate container filesystems.
-		// --mount: Create a new mount namespace.
-		//          Without this, buildah would fail to mount /var/lib/containers/storage/overlay.
-		wrapper = c.CliWrappers.Unshare.WithArgs("--map-root-user", "--map-auto", "--mount")
-	} else {
-		// Buildah doesn't work under regular unshare as non-root, use 'buildah unshare'.
-		// It does mostly the same things as the raw unshare that we use for root,
-		// but also some buildah-specific magic that makes it work rootless. E.g. this:
-		// https://github.com/containers/storage/blob/83cf57466529353aced8f1803f2302698e0b5cb7/pkg/unshare/unshare_linux.go#L462-L465
-
-		// Unlike the root case, 'buildah unshare' doesn't provide any meaningful security benefits;
-		// buildah always creates a userns for non-root users.
-		// But becoming root in this outer namespace is necessary for 'unshare --net' to work.
-		wrapper = c.CliWrappers.BuildahUnshare
-	}
-
-	inUserNamespaceArgs := []string{"--disable-rhsm-host-integration"}
-
-	if c.Params.Hermetic {
-		wrapper = cliWrappers.JoinWrappers(
-			wrapper,
-			// Create an isolated network namespace
-			c.CliWrappers.Unshare.WithArgs("--net"))
-		// But bring up the loopback interface inside this namespace.
-		// Mainly needed for Bazel builds, Bazel runs a server on localhost.
-		inUserNamespaceArgs = append(inUserNamespaceArgs, "--loopback-up")
-	}
-
-	wrapper = cliWrappers.JoinWrappers(
-		wrapper, c.CliWrappers.SelfInUserNamespace.WithArgs(inUserNamespaceArgs...))
-
-	return &wrapper
 }
 
 func (c *Build) pushImage() (string, error) {
