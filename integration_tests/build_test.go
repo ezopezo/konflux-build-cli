@@ -215,7 +215,9 @@ func cleanupContainerStorageDir(containerStoragePath string) error {
 // DeleteIfExists() on the container for cleanup.
 func setupBuildContainer(buildParams BuildParams, imageRegistry ImageRegistry, opts ...ContainerOption) (*TestRunnerContainer, error) {
 	container := NewBuildCliRunnerContainer("kbc-build", BuildImage, opts...)
-	container.AddVolumeWithOptions(buildParams.Context, "/workspace", "z")
+	// As of buildah v1.44.0, the user running 'buildah build' must own the context directory.
+	// Add :U to make podman change the owner to the container user.
+	container.AddVolumeWithOptions(buildParams.Context, "/workspace", "z,U")
 
 	var err error
 	if imageRegistry != nil {
@@ -1735,7 +1737,7 @@ RUN echo "this instruction also creates an intermediate layer" > /tmp/bar.txt
 # ...but only sometimes. It appears buildah's behavior is not deterministic.
 # Dropping the first stage1 until https://github.com/containers/buildah/issues/6731
 # is fixed and we get an updated version of buildah.
-# (We'll know because the WithTarget test will need an update when that happens.)
+# (We'll know because the PrePullImages tests will start skipping the unused stage.)
 #FROM scratch AS stage1
 #
 #LABEL stage1.label=this-stage-is-unused
@@ -2591,21 +2593,32 @@ RUN cp /random-data.bin /data/realBaseImage.bin
 				container := setupBuildContainerWithCleanup(t, buildParams, imageRegistry,
 					maybeMountContainerStorage(newStorage, "taskuser"))
 
-				err = runBuild(container, buildParams)
+				_, stderr, err = runBuildWithOutput(container, buildParams)
 				Expect(err).ToNot(HaveOccurred())
 
 				labels := getImageMeta(container, outputRef).labels
-				Expect(labels).To(HaveKeyWithValue("base1.real_index", "0"),
-					"--target=base1 should have matched the first base1, not the second")
+				Expect(labels).To(HaveKeyWithValue("base1.real_index", "1"),
+					"--target=base1 should have matched the second base1, not the first")
 
 				stdout, _, err := container.ExecuteCommandWithOutput(
 					"buildah", "images", "--format", "{{.Name}}:{{.Tag}}",
 				)
 				Expect(err).ToNot(HaveOccurred())
 				lines := strings.Split(strings.TrimSpace(stdout), "\n")
-				// Should have only pulled the base image for the first base1 stage,
-				// i.e. the storage should have this base image and the output image
-				Expect(lines).To(ConsistOf(outputRef, unusedBaseImage))
+				// Should have pulled the images for both the base1 stage, because
+				// buildah builds both of them (https://github.com/containers/buildah/issues/6731).
+				Expect(lines).To(ConsistOf(
+					outputRef,
+					// base image for first base1
+					unusedBaseImage,
+					// base image for second base1
+					baseImage1,
+					// COPY --from image in second base1
+					baseImage2,
+				))
+
+				// Verify that buildah really did build the unused stage (otherwise we wasted a pull)
+				Expect(stderr).To(ContainSubstring("the unused stage WAS built"))
 			})
 		})
 	})
