@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -369,6 +370,7 @@ type BuildahPullArgs struct {
 	HttpProxy string // Sets HTTP_PROXY and HTTPS_PROXY for the pull command
 	NoProxy   string // Sets NO_PROXY for the pull command
 	TLSVerify *bool
+	ExtraEnv  []string // Sets extra env vars. Lower precedence than the proxy variables.
 }
 
 // Pull an image from the registry to local storage.
@@ -386,7 +388,7 @@ func (b *BuildahCli) Pull(args *BuildahPullArgs) error {
 	buildahLog.Debugf("Running command:\n%s", shellJoin("buildah", buildahArgs...))
 
 	cmd := Cmd{Name: "buildah", Args: buildahArgs, LogOutput: true}
-	env := common.ProxyEnvVars(args.HttpProxy, args.NoProxy)
+	env := slices.Concat(args.ExtraEnv, common.ProxyEnvVars(args.HttpProxy, args.NoProxy))
 	if len(env) > 0 {
 		// Note: this overrides proxy vars already set in the environment, if any (last value wins)
 		cmd.Env = append(os.Environ(), env...)

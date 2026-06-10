@@ -1,7 +1,10 @@
 package integration_tests
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -656,6 +659,48 @@ func startForwardProxy(t *testing.T) (string, *sync.Map) {
 	t.Cleanup(func() { server.Close() })
 
 	return listener.Addr().String(), &connectedHosts
+}
+
+// List the files in a container layer blob (tar archive).
+// If the blob isn't a valid tar archive, assume it's not a layer and return (nil, false).
+// Else return (files, true).
+func listLayerFiles(blobPath string) ([]string, bool) {
+	var files []string
+
+	f, err := os.Open(blobPath)
+	Expect(err).ToNot(HaveOccurred())
+	defer f.Close()
+
+	var tarReader *tar.Reader
+
+	gzipReader, err := gzip.NewReader(f)
+	if err == nil {
+		tarReader = tar.NewReader(gzipReader)
+		defer gzipReader.Close()
+	} else if errors.Is(err, gzip.ErrHeader) {
+		err = nil
+		_, seekErr := f.Seek(0, io.SeekStart)
+		Expect(seekErr).ToNot(HaveOccurred())
+		// the blob isn't gzipped, try untaring it directly
+		tarReader = tar.NewReader(f)
+	}
+	Expect(err).ToNot(HaveOccurred())
+
+	for {
+		header, err := tarReader.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if errors.Is(err, tar.ErrHeader) {
+			// this is not a layer blob
+			return nil, false
+		}
+		Expect(err).ToNot(HaveOccurred())
+
+		files = append(files, header.Name)
+	}
+
+	return files, true
 }
 
 func TestBuild(t *testing.T) {
@@ -3674,6 +3719,106 @@ EOF
 			_, stderr, err := runBuildWithOutput(container, buildParams)
 			Expect(err).To(HaveOccurred())
 			Expect(stderr).To(ContainSubstring("no image found in image index for architecture"))
+		})
+	})
+
+	// Test that we're able to pull images with opaque whiteouts;
+	// motivated by https://github.com/podman-container-tools/buildah/issues/6903
+	t.Run("PullImageWithOpaqueWhiteout", func(t *testing.T) {
+		SetupGomega(t)
+
+		imageRegistry := setupImageRegistry(t)
+
+		// Build a base image with an opaque whiteout and push it to the registry
+		setupBaseImage := func() string {
+			contextDir := setupTestContext(t)
+			writeContainerfile(contextDir, fmt.Sprintf(`
+FROM %s
+# Removing and re-creating directory in single instruction should create an opaque whiteout
+RUN rm -r /etc/yum.repos.d && mkdir /etc/yum.repos.d
+`, baseImage))
+
+			outputRef := imageRegistry.GetTestNamespace() + "opaque-whiteout" + ":" + "base"
+
+			container := setupBuildContainerWithCleanup(t, BuildParams{Context: contextDir}, imageRegistry)
+
+			Expect(container.ExecuteCommand("mkdir", "-p", "/home/taskuser/.config/containers")).To(Succeed())
+			// To get an opaque whiteout, we need buildah to leave layer diff creation to the kernel
+			// (i.e. we need a setup where 'buildah info' reports "Native Overlay Diff": "true").
+			// The default task-runner config doesn't do that, override with one that might.
+			Expect(container.CreateFileInContainer(
+				"/home/taskuser/.config/containers/storage.conf", "[storage]\ndriver = \"overlay\"",
+			)).To(Succeed())
+
+			Expect(container.ExecuteCommand("buildah", "build", "-t", outputRef, "/workspace")).To(Succeed())
+			Expect(container.ExecuteCommand("buildah", "push", outputRef)).To(Succeed())
+
+			// Push the base image to the context dir so that we can verify we have an opaque whiteout
+			err = container.ExecuteCommand(
+				"buildah", "push", "--remove-signatures", outputRef, "oci:/workspace/baseimage",
+			)
+			Expect(err).ToNot(HaveOccurred())
+
+			blobs, err := filepath.Glob(filepath.Join(contextDir, "baseimage", "blobs", "sha256", "*"))
+			Expect(err).ToNot(HaveOccurred())
+
+			var whiteouts []string
+			for _, blobPath := range blobs {
+				layerFiles, isLayer := listLayerFiles(blobPath)
+				if !isLayer {
+					continue
+				}
+				for _, file := range layerFiles {
+					if strings.HasPrefix(filepath.Base(file), ".wh.") {
+						whiteouts = append(whiteouts, file)
+					}
+				}
+			}
+
+			Expect(whiteouts).To(ContainElement("etc/yum.repos.d/.wh..wh..opq"),
+				"Test failed to create an opaque whiteout in the base image layers")
+
+			// Delete the image from local storage to force the subsequent tests to pull it
+			Expect(container.ExecuteCommand("buildah", "rmi", outputRef)).To(Succeed())
+
+			return outputRef
+		}
+
+		baseImageWithWhiteouts := setupBaseImage()
+
+		contextDir := setupContext(t)
+		writeContainerfile(contextDir, "FROM "+baseImageWithWhiteouts)
+
+		runTest := func(t *testing.T, user string) {
+			SetupGomega(t)
+
+			outputRef := "localhost/test-pull-image-opaque-whiteout:" + GenerateUniqueTag(t)
+
+			buildParams := BuildParams{
+				Context:   contextDir,
+				OutputRef: outputRef,
+				Push:      false,
+			}
+
+			var opts []ContainerOption
+			if user == "root" {
+				opts = append(opts, WithUser("root"), maybeMountContainerStorage(rootStoragePath, "root"))
+			}
+
+			container := setupBuildContainerWithCleanup(t, buildParams, imageRegistry, opts...)
+
+			err := runBuild(container, buildParams)
+			Expect(err).ToNot(HaveOccurred())
+		}
+
+		// https://github.com/podman-container-tools/buildah/issues/6903 affects only root
+		t.Run("AsRoot", func(t *testing.T) {
+			runTest(t, "root")
+		})
+
+		// ...but test non-root as well to make sure (since we already know the behavior is different)
+		t.Run("AsNonRoot", func(t *testing.T) {
+			runTest(t, "taskuser")
 		})
 	})
 }

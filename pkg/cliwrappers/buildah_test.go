@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -26,6 +27,15 @@ func ensureRetryerDisabled(t *testing.T) {
 		cliwrappers.DisableRetryer = true
 		t.Cleanup(func() { cliwrappers.DisableRetryer = false })
 	}
+}
+
+func collectEnv(env []string) map[string]string {
+	envMap := make(map[string]string)
+	for _, envVar := range env {
+		key, val, _ := strings.Cut(envVar, "=")
+		envMap[key] = val
+	}
+	return envMap
 }
 
 func TestBuildahCli_Build(t *testing.T) {
@@ -606,6 +616,52 @@ func TestBuildahCli_Pull(t *testing.T) {
 		})
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(capturedArgs).To(ContainElement("--tls-verify=true"))
+	})
+
+	t.Run("should pass ExtraEnv to the command", func(t *testing.T) {
+		buildahCli, executor := setupBuildahCli()
+		var capturedEnv []string
+		executor.executeFunc = func(cmd cliwrappers.Cmd) (string, string, int, error) {
+			capturedEnv = cmd.Env
+			return "", "", 0, nil
+		}
+
+		t.Setenv("SHOULD_KEEP", "existing-env")
+
+		err := buildahCli.Pull(&cliwrappers.BuildahPullArgs{
+			Image:    image,
+			ExtraEnv: []string{"FOO=bar", "SPAM=eggs"},
+		})
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(collectEnv(capturedEnv)).To(SatisfyAll(
+			HaveKeyWithValue("SHOULD_KEEP", "existing-env"),
+			HaveKeyWithValue("FOO", "bar"),
+			HaveKeyWithValue("SPAM", "eggs"),
+		))
+	})
+
+	t.Run("proxy vars should take precedence over ExtraEnv and existing env", func(t *testing.T) {
+		buildahCli, executor := setupBuildahCli()
+		var capturedEnv []string
+		executor.executeFunc = func(cmd cliwrappers.Cmd) (string, string, int, error) {
+			capturedEnv = cmd.Env
+			return "", "", 0, nil
+		}
+
+		t.Setenv("SHOULD_KEEP", "existing-env")
+		t.Setenv("HTTP_PROXY", "from-existing-env")
+
+		err := buildahCli.Pull(&cliwrappers.BuildahPullArgs{
+			Image:     image,
+			ExtraEnv:  []string{"HTTP_PROXY=from-extra-env"},
+			HttpProxy: "from-args",
+		})
+		g.Expect(err).ToNot(HaveOccurred())
+
+		g.Expect(collectEnv(capturedEnv)).To(SatisfyAll(
+			HaveKeyWithValue("SHOULD_KEEP", "existing-env"),
+			HaveKeyWithValue("HTTP_PROXY", "from-args"),
+		))
 	})
 }
 

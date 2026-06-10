@@ -2113,12 +2113,7 @@ func splitTransport(imageRef string) (string, string) {
 
 func (c *Build) getImageLabels(imageRef string) (map[string]string, error) {
 	l.Logger.Debugf("Pulling image %s to read labels...", imageRef)
-	err := c.CliWrappers.BuildahCli.Pull(&cliWrappers.BuildahPullArgs{
-		Image:     imageRef,
-		HttpProxy: c.Params.ImagePullProxy,
-		NoProxy:   c.Params.ImagePullNoProxy,
-		TLSVerify: &c.Params.SrcTLSVerify,
-	})
+	err := c.pullImage(imageRef)
 	if err != nil {
 		return nil, fmt.Errorf("pulling image %s: %w", imageRef, err)
 	}
@@ -2167,18 +2162,30 @@ func (c *Build) prePullBaseImages(df *dockerfile.Dockerfile) ([]string, error) {
 			continue
 		}
 		l.Logger.Debugf("Pre-pulling base image: %s", image)
-		if err := c.CliWrappers.BuildahCli.Pull(&cliWrappers.BuildahPullArgs{
-			Image:     image,
-			HttpProxy: c.Params.ImagePullProxy,
-			NoProxy:   c.Params.ImagePullNoProxy,
-			TLSVerify: &c.Params.SrcTLSVerify,
-		}); err != nil {
+		if err := c.pullImage(image); err != nil {
 			return nil, fmt.Errorf("pre-pulling image %s: %w", image, err)
 		}
 		pulledImages = append(pulledImages, image)
 	}
 
 	return pulledImages, nil
+}
+
+func (c *Build) pullImage(imageRef string) error {
+	var extraEnv []string
+	// Work around https://github.com/podman-container-tools/buildah/issues/6903.
+	// Limit this to buildah v1.44.0; tests will let us know in case later versions need it too.
+	if slices.Equal(c.parsedBuildahVersion, []int{1, 44, 0}) {
+		extraEnv = append(extraEnv, "_CONTAINERS_USERNS_CONFIGURED=done")
+	}
+
+	return c.CliWrappers.BuildahCli.Pull(&cliWrappers.BuildahPullArgs{
+		Image:     imageRef,
+		HttpProxy: c.Params.ImagePullProxy,
+		NoProxy:   c.Params.ImagePullNoProxy,
+		TLSVerify: &c.Params.SrcTLSVerify,
+		ExtraEnv:  extraEnv,
+	})
 }
 
 // Verify that each pre-pulled base image has an architecture matching the host

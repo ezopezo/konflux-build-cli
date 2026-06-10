@@ -2588,6 +2588,61 @@ func Test_Build_prePullBaseImages(t *testing.T) {
 	}
 }
 
+func Test_Build_pullImage(t *testing.T) {
+	g := NewWithT(t)
+
+	tests := []struct {
+		name                 string
+		parsedBuildahVersion []int
+		expectedExtraEnv     []string
+	}{
+		{
+			name:                 "buildah 1.44.0 sets _CONTAINERS_USERNS_CONFIGURED",
+			parsedBuildahVersion: []int{1, 44, 0},
+			expectedExtraEnv:     []string{"_CONTAINERS_USERNS_CONFIGURED=done"},
+		},
+		{
+			name:                 "buildah 1.43.1 does not set _CONTAINERS_USERNS_CONFIGURED",
+			parsedBuildahVersion: []int{1, 43, 1},
+			expectedExtraEnv:     nil,
+		},
+		{
+			name:                 "buildah 1.44.1 does not set _CONTAINERS_USERNS_CONFIGURED",
+			parsedBuildahVersion: []int{1, 44, 1},
+			expectedExtraEnv:     nil,
+		},
+		{
+			name:                 "buildah 2.0.0 does not set _CONTAINERS_USERNS_CONFIGURED",
+			parsedBuildahVersion: []int{2, 0, 0},
+			expectedExtraEnv:     nil,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var capturedArgs *cliwrappers.BuildahPullArgs
+			mock := &mockBuildahCli{
+				PullFunc: func(args *cliwrappers.BuildahPullArgs) error {
+					capturedArgs = args
+					return nil
+				},
+			}
+
+			c := &Build{
+				Params:               &BuildParams{},
+				CliWrappers:          BuildCliWrappers{BuildahCli: mock},
+				parsedBuildahVersion: tc.parsedBuildahVersion,
+			}
+
+			err := c.pullImage("registry.example.com/image:latest")
+
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(capturedArgs).ToNot(BeNil())
+			g.Expect(capturedArgs.ExtraEnv).To(Equal(tc.expectedExtraEnv))
+		})
+	}
+}
+
 func Test_Build_resolveBaseImages(t *testing.T) {
 	g := NewWithT(t)
 
