@@ -111,6 +111,7 @@ func Test_Build_validateParams(t *testing.T) {
 				OutputRef:     "quay.io/org/image:tag",
 				Context:       tempDir,
 				Containerfile: "",
+				SBOMFormat:    "spdx",
 			},
 			errExpected: false,
 		},
@@ -120,6 +121,7 @@ func Test_Build_validateParams(t *testing.T) {
 				OutputRef:     "registry.io/namespace/image:v1.0",
 				Context:       tempDir,
 				Containerfile: "Dockerfile",
+				SBOMFormat:    "spdx",
 			},
 			errExpected: false,
 		},
@@ -187,6 +189,7 @@ func Test_Build_validateParams(t *testing.T) {
 				OutputRef:       "quay.io/org/image:tag",
 				Context:         tempDir,
 				PrefetchDirCopy: filepath.Join(tempDir, "nonexistent-copy-dir"),
+				SBOMFormat:      "spdx",
 			},
 			errExpected: false,
 		},
@@ -198,6 +201,7 @@ func Test_Build_validateParams(t *testing.T) {
 				RHSMActivationKey:   "/path/to/key",
 				RHSMOrg:             "/path/to/org",
 				RHSMActivationMount: "/activation-key",
+				SBOMFormat:          "spdx",
 			},
 			errExpected: false,
 		},
@@ -209,6 +213,7 @@ func Test_Build_validateParams(t *testing.T) {
 				RHSMActivationKey:         "/path/to/key",
 				RHSMOrg:                   "/path/to/org",
 				RHSMActivationPreregister: true,
+				SBOMFormat:                "spdx",
 			},
 			errExpected: false,
 		},
@@ -221,6 +226,7 @@ func Test_Build_validateParams(t *testing.T) {
 				RHSMOrg:                   "/path/to/org",
 				RHSMActivationMount:       "/activation-key",
 				RHSMActivationPreregister: true,
+				SBOMFormat:                "spdx",
 			},
 			errExpected: false,
 		},
@@ -230,6 +236,7 @@ func Test_Build_validateParams(t *testing.T) {
 				OutputRef:        "quay.io/org/image:tag",
 				Context:          tempDir,
 				RHSMEntitlements: "/etc/pki/entitlement",
+				SBOMFormat:       "spdx",
 			},
 			errExpected: false,
 		},
@@ -239,6 +246,7 @@ func Test_Build_validateParams(t *testing.T) {
 				OutputRef:        "quay.io/org/image:tag",
 				Context:          tempDir,
 				RHSMMountCACerts: "always",
+				SBOMFormat:       "spdx",
 			},
 			errExpected: false,
 		},
@@ -248,6 +256,7 @@ func Test_Build_validateParams(t *testing.T) {
 				OutputRef:        "quay.io/org/image:tag",
 				Context:          tempDir,
 				RHSMMountCACerts: "auto",
+				SBOMFormat:       "spdx",
 			},
 			errExpected: false,
 		},
@@ -257,6 +266,7 @@ func Test_Build_validateParams(t *testing.T) {
 				OutputRef:        "quay.io/org/image:tag",
 				Context:          tempDir,
 				RHSMMountCACerts: "never",
+				SBOMFormat:       "spdx",
 			},
 			errExpected: false,
 		},
@@ -350,18 +360,20 @@ func Test_Build_validateParams(t *testing.T) {
 		{
 			name: "should allow source with relative context inside source",
 			params: BuildParams{
-				OutputRef: "quay.io/org/image:tag",
-				Source:    sourceDir,
-				Context:   "ctx",
+				OutputRef:  "quay.io/org/image:tag",
+				Source:     sourceDir,
+				Context:    "ctx",
+				SBOMFormat: "spdx",
 			},
 			errExpected: false,
 		},
 		{
 			name: "should allow source with dot context",
 			params: BuildParams{
-				OutputRef: "quay.io/org/image:tag",
-				Source:    sourceDir,
-				Context:   ".",
+				OutputRef:  "quay.io/org/image:tag",
+				Source:     sourceDir,
+				Context:    ".",
+				SBOMFormat: "spdx",
 			},
 			errExpected: false,
 		},
@@ -388,9 +400,10 @@ func Test_Build_validateParams(t *testing.T) {
 		{
 			name: "should allow source with absolute context inside source",
 			params: BuildParams{
-				OutputRef: "quay.io/org/image:tag",
-				Source:    sourceDir,
-				Context:   filepath.Join(sourceDir, "ctx"),
+				OutputRef:  "quay.io/org/image:tag",
+				Source:     sourceDir,
+				Context:    filepath.Join(sourceDir, "ctx"),
+				SBOMFormat: "spdx",
 			},
 			errExpected: false,
 		},
@@ -403,6 +416,44 @@ func Test_Build_validateParams(t *testing.T) {
 			},
 			errExpected:  true,
 			errSubstring: "no such file or directory",
+		},
+		{
+			name: "should accept valid sbom-format spdx",
+			params: BuildParams{
+				OutputRef:  "quay.io/org/image:tag",
+				Context:    tempDir,
+				SBOMFormat: "spdx",
+			},
+			errExpected: false,
+		},
+		{
+			name: "should accept valid sbom-format cyclonedx",
+			params: BuildParams{
+				OutputRef:  "quay.io/org/image:tag",
+				Context:    tempDir,
+				SBOMFormat: "cyclonedx",
+			},
+			errExpected: false,
+		},
+		{
+			name: "should fail on empty sbom-format",
+			params: BuildParams{
+				OutputRef:  "quay.io/org/image:tag",
+				Context:    tempDir,
+				SBOMFormat: "",
+			},
+			errExpected:  true,
+			errSubstring: "sbom-format must be 'cyclonedx' or 'spdx'",
+		},
+		{
+			name: "should fail on invalid sbom-format",
+			params: BuildParams{
+				OutputRef:  "quay.io/org/image:tag",
+				Context:    tempDir,
+				SBOMFormat: "invalid",
+			},
+			errExpected:  true,
+			errSubstring: "sbom-format must be 'cyclonedx' or 'spdx'",
 		},
 	}
 
@@ -1245,6 +1296,7 @@ func Test_Build_Run(t *testing.T) {
 				// *-tls-verify defaults to true in the CLI
 				SrcTLSVerify:  true,
 				DestTLSVerify: true,
+				SBOMFormat:    "spdx",
 			},
 			ResultsWriter: _mockResultsWriter,
 		}
@@ -1437,6 +1489,7 @@ func Test_Build_Run(t *testing.T) {
 				Context:        "context",
 				SecretDirs:     []string{"secrets"},
 				SkipInjections: true,
+				SBOMFormat:     "spdx",
 			},
 			ResultsWriter: _mockResultsWriter,
 		}
@@ -1490,6 +1543,7 @@ func Test_Build_Run(t *testing.T) {
 				Containerfile:  "Containerfile",
 				WorkdirMount:   "/workdir",
 				SkipInjections: true,
+				SBOMFormat:     "spdx",
 			},
 			ResultsWriter: _mockResultsWriter,
 		}
@@ -4101,5 +4155,224 @@ func Test_Build_integrateWithPrefetch_secretEnvMounts(t *testing.T) {
 
 		// Containerfile should be modified
 		g.Expect(c.containerfileCopyPath).ToNot(BeEmpty())
+	})
+}
+
+func Test_Build_runSyftScans(t *testing.T) {
+	t.Run("should scan source only", func(t *testing.T) {
+		g := NewWithT(t)
+		contextDir := t.TempDir()
+		var capturedArgs *cliwrappers.SyftScanArgs
+
+		c := &Build{
+			Params: &BuildParams{
+				Context:          contextDir,
+				SyftSourceOutput: "/tmp/sbom-source.json",
+				SBOMFormat:       "spdx",
+			},
+			CliWrappers: BuildCliWrappers{
+				SyftCli: &mockSyftCli{
+					ScanFunc: func(args *cliwrappers.SyftScanArgs) (string, error) {
+						capturedArgs = args
+						return "", nil
+					},
+				},
+			},
+		}
+
+		g.Expect(c.runSyftScans()).To(Succeed())
+		g.Expect(capturedArgs.Source).To(Equal("dir:" + contextDir))
+		g.Expect(capturedArgs.Format).To(Equal("spdx-json@2.3"))
+		g.Expect(capturedArgs.OutputFile).To(Equal("/tmp/sbom-source.json"))
+	})
+
+	t.Run("should scan image only", func(t *testing.T) {
+		g := NewWithT(t)
+		var capturedArgs *cliwrappers.SyftScanArgs
+		rmCalled := false
+
+		c := &Build{
+			Params: &BuildParams{
+				Context:         t.TempDir(),
+				OutputRef:       "localhost/test:latest",
+				SyftImageOutput: "/tmp/sbom-image.json",
+				SBOMFormat:      "cyclonedx",
+			},
+			CliWrappers: BuildCliWrappers{
+				BuildahCli: &mockBuildahCli{
+					FromFunc: func(image string) (string, error) {
+						g.Expect(image).To(Equal("localhost/test:latest"))
+						return "working-container", nil
+					},
+					MountFunc: func(container string) (string, error) {
+						g.Expect(container).To(Equal("working-container"))
+						return "/var/lib/containers/mount123", nil
+					},
+					RmFunc: func(container string) error {
+						g.Expect(container).To(Equal("working-container"))
+						rmCalled = true
+						return nil
+					},
+				},
+				SyftCli: &mockSyftCli{
+					ScanFunc: func(args *cliwrappers.SyftScanArgs) (string, error) {
+						capturedArgs = args
+						return "", nil
+					},
+				},
+			},
+		}
+
+		g.Expect(c.runSyftScans()).To(Succeed())
+		g.Expect(capturedArgs.Source).To(Equal("dir:/var/lib/containers/mount123"))
+		g.Expect(capturedArgs.Format).To(Equal("cyclonedx-json@1.5"))
+		g.Expect(capturedArgs.OutputFile).To(Equal("/tmp/sbom-image.json"))
+		g.Expect(capturedArgs.OverrideDefaultCatalogers).To(Equal("image"))
+		g.Expect(rmCalled).To(BeTrue())
+	})
+
+	t.Run("should scan both source and image", func(t *testing.T) {
+		g := NewWithT(t)
+		scanCalls := 0
+
+		c := &Build{
+			Params: &BuildParams{
+				Context:          t.TempDir(),
+				OutputRef:        "localhost/test:latest",
+				SyftSourceOutput: "/tmp/sbom-source.json",
+				SyftImageOutput:  "/tmp/sbom-image.json",
+				SBOMFormat:       "spdx",
+			},
+			CliWrappers: BuildCliWrappers{
+				BuildahCli: &mockBuildahCli{
+					FromFunc:  func(image string) (string, error) { return "ctr", nil },
+					MountFunc: func(container string) (string, error) { return "/mnt", nil },
+					RmFunc:    func(container string) error { return nil },
+				},
+				SyftCli: &mockSyftCli{
+					ScanFunc: func(args *cliwrappers.SyftScanArgs) (string, error) {
+						scanCalls++
+						return "", nil
+					},
+				},
+			},
+		}
+
+		g.Expect(c.runSyftScans()).To(Succeed())
+		g.Expect(scanCalls).To(Equal(2))
+	})
+
+	t.Run("should propagate source scan error", func(t *testing.T) {
+		g := NewWithT(t)
+
+		c := &Build{
+			Params: &BuildParams{
+				Context:          t.TempDir(),
+				SyftSourceOutput: "/tmp/sbom-source.json",
+				SBOMFormat:       "spdx",
+			},
+			CliWrappers: BuildCliWrappers{
+				SyftCli: &mockSyftCli{
+					ScanFunc: func(args *cliwrappers.SyftScanArgs) (string, error) {
+						return "", errors.New("scan failed")
+					},
+				},
+			},
+		}
+
+		err := c.runSyftScans()
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(err.Error()).To(ContainSubstring("syft source scan"))
+		g.Expect(err.Error()).To(ContainSubstring("scan failed"))
+	})
+
+	t.Run("should propagate buildah from error", func(t *testing.T) {
+		g := NewWithT(t)
+
+		c := &Build{
+			Params: &BuildParams{
+				Context:         t.TempDir(),
+				OutputRef:       "localhost/test:latest",
+				SyftImageOutput: "/tmp/sbom-image.json",
+				SBOMFormat:      "spdx",
+			},
+			CliWrappers: BuildCliWrappers{
+				BuildahCli: &mockBuildahCli{
+					FromFunc: func(image string) (string, error) {
+						return "", errors.New("from failed")
+					},
+				},
+				SyftCli: &mockSyftCli{},
+			},
+		}
+
+		err := c.runSyftScans()
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(err.Error()).To(ContainSubstring("buildah from"))
+	})
+
+	t.Run("should propagate buildah mount error", func(t *testing.T) {
+		g := NewWithT(t)
+		rmCalled := false
+
+		c := &Build{
+			Params: &BuildParams{
+				Context:         t.TempDir(),
+				OutputRef:       "localhost/test:latest",
+				SyftImageOutput: "/tmp/sbom-image.json",
+				SBOMFormat:      "spdx",
+			},
+			CliWrappers: BuildCliWrappers{
+				BuildahCli: &mockBuildahCli{
+					FromFunc: func(image string) (string, error) { return "ctr", nil },
+					MountFunc: func(container string) (string, error) {
+						return "", errors.New("mount failed")
+					},
+					RmFunc: func(container string) error {
+						rmCalled = true
+						return nil
+					},
+				},
+				SyftCli: &mockSyftCli{},
+			},
+		}
+
+		err := c.runSyftScans()
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(err.Error()).To(ContainSubstring("buildah mount"))
+		g.Expect(rmCalled).To(BeTrue(), "buildah rm should be called even on mount failure")
+	})
+
+	t.Run("should call buildah rm even on scan failure", func(t *testing.T) {
+		g := NewWithT(t)
+		rmCalled := false
+
+		c := &Build{
+			Params: &BuildParams{
+				Context:         t.TempDir(),
+				OutputRef:       "localhost/test:latest",
+				SyftImageOutput: "/tmp/sbom-image.json",
+				SBOMFormat:      "spdx",
+			},
+			CliWrappers: BuildCliWrappers{
+				BuildahCli: &mockBuildahCli{
+					FromFunc:  func(image string) (string, error) { return "ctr", nil },
+					MountFunc: func(container string) (string, error) { return "/mnt", nil },
+					RmFunc: func(container string) error {
+						rmCalled = true
+						return nil
+					},
+				},
+				SyftCli: &mockSyftCli{
+					ScanFunc: func(args *cliwrappers.SyftScanArgs) (string, error) {
+						return "", errors.New("scan failed")
+					},
+				},
+			},
+		}
+
+		err := c.runSyftScans()
+		g.Expect(err).To(HaveOccurred())
+		g.Expect(rmCalled).To(BeTrue(), "buildah rm should be called even on scan failure")
 	})
 }

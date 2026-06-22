@@ -81,6 +81,9 @@ type BuildParams struct {
 	CapAdd                     []string
 	CapDrop                    []string
 	AllowCrossPlatformImages   bool
+	SyftSourceOutput           string
+	SyftImageOutput            string
+	SBOMFormat                 string
 	ExtraArgs                  []string
 }
 
@@ -388,6 +391,15 @@ func runBuildWithOutput(container *TestRunnerContainer, buildParams BuildParams)
 	}
 	if buildParams.AllowCrossPlatformImages {
 		args = append(args, "--allow-cross-platform-images")
+	}
+	if buildParams.SyftSourceOutput != "" {
+		args = append(args, "--syft-source-output", buildParams.SyftSourceOutput)
+	}
+	if buildParams.SyftImageOutput != "" {
+		args = append(args, "--syft-image-output", buildParams.SyftImageOutput)
+	}
+	if buildParams.SBOMFormat != "" {
+		args = append(args, "--sbom-format", buildParams.SBOMFormat)
 	}
 	if len(buildParams.ExtraArgs) > 0 {
 		args = append(args, "--")
@@ -705,6 +717,54 @@ func listLayerFiles(blobPath string) ([]string, bool) {
 	}
 
 	return files, true
+}
+
+type spdxDoc struct {
+	Packages []struct {
+		Name string `json:"name"`
+	} `json:"packages"`
+}
+
+func (s *spdxDoc) packageNames() []string {
+	var names []string
+	for _, pkg := range s.Packages {
+		names = append(names, pkg.Name)
+	}
+	return names
+}
+
+func readSPDX(path string) spdxDoc {
+	content, err := os.ReadFile(path)
+	Expect(err).ToNot(HaveOccurred())
+
+	var spdxDoc spdxDoc
+	Expect(json.Unmarshal(content, &spdxDoc)).To(Succeed())
+
+	return spdxDoc
+}
+
+type cyclonedxDoc struct {
+	Components []struct {
+		Name string `json:"name"`
+	} `json:"components"`
+}
+
+func (c *cyclonedxDoc) componentNames() []string {
+	var names []string
+	for _, component := range c.Components {
+		names = append(names, component.Name)
+	}
+	return names
+}
+
+func readCycloneDX(path string) cyclonedxDoc {
+	content, err := os.ReadFile(path)
+	Expect(err).ToNot(HaveOccurred())
+
+	var cyclonedxDoc cyclonedxDoc
+	Expect(json.Unmarshal(content, &cyclonedxDoc)).To(Succeed())
+
+	return cyclonedxDoc
 }
 
 func TestBuild(t *testing.T) {
@@ -3971,6 +4031,72 @@ RUN rm -r /etc/yum.repos.d && mkdir /etc/yum.repos.d
 		// ...but test non-root as well to make sure (since we already know the behavior is different)
 		t.Run("AsNonRoot", func(t *testing.T) {
 			runTest(t, "taskuser")
+		})
+	})
+
+	t.Run("SyftSBOM", func(t *testing.T) {
+		SetupGomega(t)
+
+		contextDir := setupTestContext(t)
+		testutil.WriteFileTree(t, contextDir, map[string]string{
+			"requirements.txt": "some-dependency==1.0.0",
+		})
+
+		writeContainerfile(contextDir, fmt.Sprintf(`FROM %s`, baseImage))
+
+		runTest := func(t *testing.T, user string, sbomFormat string) {
+			SetupGomega(t)
+
+			outputRef := "localhost/test-syft-sbom:" + GenerateUniqueTag(t)
+
+			buildParams := BuildParams{
+				Context:          contextDir,
+				OutputRef:        outputRef,
+				SyftSourceOutput: "/workspace/sbom-source.json",
+				SyftImageOutput:  "/workspace/sbom-image.json",
+				SBOMFormat:       sbomFormat,
+			}
+
+			var opts []ContainerOption
+			if user == "root" {
+				opts = append(opts, WithUser("root"), maybeMountContainerStorage(rootStoragePath, "root"))
+			}
+
+			container := setupBuildContainerWithCleanup(t, buildParams, nil, opts...)
+
+			err := runBuild(container, buildParams)
+			Expect(err).ToNot(HaveOccurred())
+		}
+
+		t.Run("SPDX", func(t *testing.T) {
+			runTest(t, "root", "spdx")
+
+			sbomSource := readSPDX(filepath.Join(contextDir, "sbom-source.json"))
+			Expect(sbomSource.packageNames()).To(ContainElement("some-dependency"))
+
+			sbomImage := readSPDX(filepath.Join(contextDir, "sbom-image.json"))
+			Expect(sbomImage.packageNames()).To(ContainElements("glibc", "gpg-pubkey", "redhat-release"))
+		})
+
+		t.Run("CycloneDX", func(t *testing.T) {
+			runTest(t, "root", "cyclonedx")
+
+			sbomSource := readCycloneDX(filepath.Join(contextDir, "sbom-source.json"))
+			Expect(sbomSource.componentNames()).To(ContainElement("some-dependency"))
+
+			sbomImage := readCycloneDX(filepath.Join(contextDir, "sbom-image.json"))
+			Expect(sbomImage.componentNames()).To(ContainElements("glibc", "gpg-pubkey", "redhat-release"))
+		})
+
+		// Test that we can successfully scan the built image (involves 'buildah mount') as non-root
+		t.Run("AsNonRoot", func(t *testing.T) {
+			runTest(t, "taskuser", "spdx")
+
+			sbomSource := readSPDX(filepath.Join(contextDir, "sbom-source.json"))
+			Expect(sbomSource.packageNames()).To(ContainElement("some-dependency"))
+
+			sbomImage := readSPDX(filepath.Join(contextDir, "sbom-image.json"))
+			Expect(sbomImage.packageNames()).To(ContainElements("glibc", "gpg-pubkey", "redhat-release"))
 		})
 	})
 }

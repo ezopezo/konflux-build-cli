@@ -61,7 +61,9 @@ var BuildParamsConfig = map[string]common.Parameter{
 		EnvVarName:   "KBC_BUILD_SOURCE",
 		TypeKind:     reflect.String,
 		DefaultValue: "",
-		Usage:        "Path to a directory containing the source code.\nIf specified, the --containerfile and --context are treated as (and verified to be) relative to the source.",
+		Usage: "Path to a directory containing the source code." +
+			"\nIf specified, the --containerfile and --context are treated as (and verified to be) relative to the source." +
+			"\nIf syft scanning is enabled, syft will run from within the source directory to pick up local config files.",
 	},
 	"output-ref": {
 		Name:       "output-ref",
@@ -417,6 +419,25 @@ var BuildParamsConfig = map[string]common.Parameter{
 		DefaultValue: "false",
 		Usage:        "Allow base images with a different architecture than the host.\nEmits a warning instead of failing.",
 	},
+	"syft-source-output": {
+		Name:       "syft-source-output",
+		EnvVarName: "KBC_BUILD_SYFT_SOURCE_OUTPUT",
+		TypeKind:   reflect.String,
+		Usage:      "File path where to write the output of scanning the context directory with syft.",
+	},
+	"syft-image-output": {
+		Name:       "syft-image-output",
+		EnvVarName: "KBC_BUILD_SYFT_IMAGE_OUTPUT",
+		TypeKind:   reflect.String,
+		Usage:      "File path where to write the output of scanning the built image with syft.",
+	},
+	"sbom-format": {
+		Name:         "sbom-format",
+		EnvVarName:   "KBC_BUILD_SBOM_FORMAT",
+		TypeKind:     reflect.String,
+		DefaultValue: "spdx",
+		Usage:        "SBOM output format (spdx or cyclonedx).",
+	},
 }
 
 type BuildParams struct {
@@ -473,6 +494,9 @@ type BuildParams struct {
 	Devices                    []string `paramName:"devices"`
 	Ulimits                    []string `paramName:"ulimits"`
 	AllowCrossPlatformImages   bool     `paramName:"allow-cross-platform-images"`
+	SyftSourceOutput           string   `paramName:"syft-source-output"`
+	SyftImageOutput            string   `paramName:"syft-image-output"`
+	SBOMFormat                 string   `paramName:"sbom-format"`
 	ExtraArgs                  []string // Additional arguments to pass to buildah build
 }
 
@@ -482,6 +506,7 @@ type BuildCliWrappers struct {
 	Unshare             cliWrappers.WrapperCmd
 	SelfInUserNamespace cliWrappers.WrapperCmd
 	SubscriptionManager cliWrappers.SubscriptionManagerCliInterface
+	SyftCli             cliWrappers.SyftCliInterface
 }
 
 type BuildResults struct {
@@ -595,6 +620,14 @@ func (c *Build) initCliWrappers() error {
 			return fmt.Errorf("cannot pre-register with RHSM: %w", err)
 		}
 		c.CliWrappers.SubscriptionManager = subman
+	}
+
+	if c.Params.SyftSourceOutput != "" || c.Params.SyftImageOutput != "" {
+		syftCli, err := cliWrappers.NewSyftCli(executor)
+		if err != nil {
+			return fmt.Errorf("syft is required for --syft-source-output or --syft-image-output: %w", err)
+		}
+		c.CliWrappers.SyftCli = syftCli
 	}
 
 	return nil
@@ -747,6 +780,10 @@ func (c *Build) run() error {
 
 	c.Results.ImageUrl = c.Params.OutputRef
 
+	if err := c.runSyftScans(); err != nil {
+		return err
+	}
+
 	if c.Params.Push {
 		digest, err := c.pushImage()
 		if err != nil {
@@ -852,6 +889,11 @@ func (c *Build) validateParams() error {
 	if c.Params.RewriteTimestamp && c.Params.SourceDateEpoch == "" {
 		// Not an error, just a warning (buildah also doesn't error for this combination of flags)
 		l.Logger.Warn("RewriteTimestamp is enabled but SourceDateEpoch was not provided. Timestamps will not be re-written.")
+	}
+
+	validSBOMFormats := map[string]bool{"cyclonedx": true, "spdx": true}
+	if !validSBOMFormats[c.Params.SBOMFormat] {
+		return fmt.Errorf("sbom-format must be 'cyclonedx' or 'spdx', got '%s'", c.Params.SBOMFormat)
 	}
 
 	return nil
@@ -2540,6 +2582,75 @@ func (c *Build) buildImage() (err error) {
 	}
 
 	l.Logger.Info("Build completed successfully")
+	return nil
+}
+
+func (c *Build) runSyftScans() (err error) {
+	var syftFormat string
+	switch c.Params.SBOMFormat {
+	case "cyclonedx":
+		syftFormat = "cyclonedx-json@1.5"
+	case "spdx":
+		syftFormat = "spdx-json@2.3"
+	default:
+		return fmt.Errorf("unexpected SBOM format requested: %q", c.Params.SBOMFormat)
+	}
+
+	if c.Params.SyftSourceOutput != "" {
+		// Need absolute path in case --source changes the workdir
+		syftSourceOutput, err := filepath.Abs(c.Params.SyftSourceOutput)
+		if err != nil {
+			return fmt.Errorf("getting absolute syft-source-output path: %w", err)
+		}
+
+		l.Logger.Info("Running syft scan on context directory...")
+		_, err = c.CliWrappers.SyftCli.Scan(&cliWrappers.SyftScanArgs{
+			Source:     "dir:" + c.Params.Context,
+			Workdir:    c.Params.Source,
+			Format:     syftFormat,
+			OutputFile: syftSourceOutput,
+		})
+		if err != nil {
+			return fmt.Errorf("syft source scan: %w", err)
+		}
+		l.Logger.Infof("Source SBOM written to %s", c.Params.SyftSourceOutput)
+	}
+
+	if c.Params.SyftImageOutput != "" {
+		syftImageOutput, err := filepath.Abs(c.Params.SyftImageOutput)
+		if err != nil {
+			return fmt.Errorf("getting absolute syft-image-output path: %w", err)
+		}
+
+		l.Logger.Info("Mounting built image filesystem for syft scan...")
+		container, err := c.CliWrappers.BuildahCli.From(c.Params.OutputRef)
+		if err != nil {
+			return fmt.Errorf("buildah from: %w", err)
+		}
+		defer func() {
+			if rmErr := c.CliWrappers.BuildahCli.Rm(container); rmErr != nil {
+				l.Logger.Warnf("Failed to clean up working container %q after syft scan: %s", container, rmErr)
+			}
+		}()
+		mountPoint, err := c.CliWrappers.BuildahCli.Mount(container)
+		if err != nil {
+			return fmt.Errorf("buildah mount: %w", err)
+		}
+
+		l.Logger.Info("Running syft scan on built image filesystem...")
+		_, err = c.CliWrappers.SyftCli.Scan(&cliWrappers.SyftScanArgs{
+			Source:                    "dir:" + mountPoint,
+			Workdir:                   c.Params.Source,
+			Format:                    syftFormat,
+			OutputFile:                syftImageOutput,
+			OverrideDefaultCatalogers: "image",
+		})
+		if err != nil {
+			return fmt.Errorf("syft image scan: %w", err)
+		}
+		l.Logger.Infof("Image SBOM written to %s", c.Params.SyftImageOutput)
+	}
+
 	return nil
 }
 
