@@ -3113,6 +3113,12 @@ EOF
 
 # exec form - unsupported by Containerfile editing, supported by secret mounts
 RUN ["/bin/sh", "-c", "echo \"exec: PREFETCH_ENV_VAR=${PREFETCH_ENV_VAR-unset}\""]
+
+# should still mount prefetch.env for backwards compatibility
+RUN if [ ! -e /tmp/.prefetch.env ]; then \
+        echo "ERROR: prefetch.env was not mounted!"; \
+        exit 1; \
+    fi
 `, baseImage))
 
 			outputRef := "localhost/test-prefetch:" + GenerateUniqueTag(t)

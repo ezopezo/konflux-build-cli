@@ -298,7 +298,7 @@ var BuildParamsConfig = map[string]common.Parameter{
 		ShortName:  "",
 		EnvVarName: "KBC_BUILD_PREFETCH_ENV_MOUNT",
 		TypeKind:   reflect.String,
-		Usage:      "Set an alternative mount destination for the prefetch env file (default is " + defaultPrefetchEnvMount + ")\nThis path usually doesn't matter, containerfiles never need to access it explicitly.",
+		Usage:      "Set an alternative mount destination for the prefetch env file (default is " + defaultPrefetchEnvMount + ")\nThis path usually doesn't matter, containerfiles typically don't need to access it explicitly.",
 	},
 	"resolved-base-images-output": {
 		Name:       "resolved-base-images-output",
@@ -1166,29 +1166,38 @@ func (c *Build) integrateWithPrefetch() (*prefetchResources, error) {
 		})
 	}
 
-	if resources.envJsonFile != "" && slices.Compare(c.parsedBuildahVersion, []int{1, 44, 0}) >= 0 {
-		l.Logger.Debug("Using buildah secret env mounts for prefetch env vars (buildah >= 1.44.0)")
-		if err := c.setPrefetchEnvSecrets(resources.envJsonFile); err != nil {
-			return nil, fmt.Errorf("setting up prefetch env secrets: %w", err)
+	envViaSecret := false
+	if resources.envJsonFile != "" {
+		if slices.Compare(c.parsedBuildahVersion, []int{1, 44, 0}) >= 0 {
+			l.Logger.Debug("Using buildah secret env mounts for prefetch env vars (buildah >= 1.44.0)")
+			if err := c.setPrefetchEnvSecrets(resources.envJsonFile); err != nil {
+				return nil, fmt.Errorf("setting up prefetch env secrets: %w", err)
+			}
+			envViaSecret = true
+		} else if resources.envFile == "" {
+			l.Logger.Warn("prefetch-env.json exists but buildah < 1.44.0 and no prefetch.env fallback; " +
+				"prefetch env vars will not be injected into the build")
 		}
-	} else if resources.envJsonFile != "" && resources.envFile == "" {
-		l.Logger.Warn("prefetch-env.json exists but buildah < 1.44.0 and no prefetch.env fallback; " +
-			"prefetch env vars will not be injected into the build")
-	} else if resources.envFile != "" {
+	}
+	if resources.envFile != "" {
+		// Always mount the prefetch env file, even when we don't need it to set env vars.
+		// Some builds may depend on the existence of the file to check if the build is hermetic.
 		envMountPath := c.Params.PrefetchEnvMount
 		if envMountPath == "" {
 			envMountPath = defaultPrefetchEnvMount
 		}
-
+		l.Logger.Debugf("Mounting prefetch env file at %s", envMountPath)
 		c.buildahVolumes = append(c.buildahVolumes, cliWrappers.BuildahVolume{
 			HostDir:      resources.envFile,
 			ContainerDir: envMountPath,
 			Options:      "z",
 		})
 
-		l.Logger.Debug("Modifying containerfile to apply prefetch env")
-		if err := c.injectPrefetchEnvToContainerfile(envMountPath); err != nil {
-			return nil, fmt.Errorf("modifying containerfile to apply prefetch env: %w", err)
+		if !envViaSecret {
+			l.Logger.Debug("Modifying containerfile to apply prefetch env")
+			if err := c.injectPrefetchEnvToContainerfile(envMountPath); err != nil {
+				return nil, fmt.Errorf("modifying containerfile to apply prefetch env: %w", err)
+			}
 		}
 	}
 

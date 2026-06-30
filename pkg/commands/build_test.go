@@ -4056,7 +4056,7 @@ func Test_Build_integrateWithPrefetch_secretEnvMounts(t *testing.T) {
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(resources).ToNot(BeNil())
 
-		// Should use secrets and secret mounts, not volume mounts for env
+		// Should use secrets and secret mounts for env
 		g.Expect(c.buildahSecrets).To(HaveLen(1))
 		g.Expect(c.buildahSecrets[0].Id).To(Equal("prefetch-env-0"))
 		g.Expect(c.buildahMounts).To(HaveLen(1))
@@ -4064,10 +4064,15 @@ func Test_Build_integrateWithPrefetch_secretEnvMounts(t *testing.T) {
 		g.Expect(c.buildahMounts[0].Id).To(Equal("prefetch-env-0"))
 		g.Expect(c.buildahMounts[0].Env).To(Equal("GOMODCACHE"))
 
-		// Should NOT have a volume mount for the env file
+		// Should still have a volume mount for the env file
+		// (builds may use its existence to as an indicator that the build is hermetic)
+		hasEnvMount := false
 		for _, vol := range c.buildahVolumes {
-			g.Expect(vol.ContainerDir).ToNot(Equal(defaultPrefetchEnvMount))
+			if vol.ContainerDir == defaultPrefetchEnvMount {
+				hasEnvMount = true
+			}
 		}
+		g.Expect(hasEnvMount).To(BeTrue(), "should have mounted the env file anyway")
 
 		// Containerfile should NOT be modified
 		g.Expect(c.containerfileCopyPath).To(BeEmpty())
