@@ -120,7 +120,7 @@ spec:
                 git checkout "$git_revision"
 
                 # Run the integration tests
-                go test -timeout 20m ./integration_tests
+                go test -tags exclude_graphdriver_btrfs -timeout 20m ./integration_tests
               EOF
   finally:
     - name: deprovision-virtual-machine

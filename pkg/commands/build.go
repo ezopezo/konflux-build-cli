@@ -812,6 +812,8 @@ func (c *Build) run() error {
 	if c.Params.BuilderMetadataOutput != "" {
 		if err := c.scanBuilderContent(); err != nil {
 			l.Logger.Warnf("Builder content scanning failed: %v", err)
+			// Write empty sentinel so mobster can open the file without error
+			_ = os.WriteFile(c.Params.BuilderMetadataOutput, []byte(`{"packages":[]}`), 0644) //nolint:gosec // path from CLI param
 		}
 	}
 
@@ -2583,8 +2585,8 @@ func (c *Build) buildImage() (err error) {
 		CapDrop:          c.Params.CapDrop,
 		Devices:          c.Params.Devices,
 		Ulimits:          c.Params.Ulimits,
-		SaveStages:       c.Params.BuilderMetadataOutput != "" && slices.Compare(c.parsedBuildahVersion, []int{1, 44, 0}) >= 0,
-		StageLabels:      c.Params.BuilderMetadataOutput != "" && slices.Compare(c.parsedBuildahVersion, []int{1, 44, 0}) >= 0,
+		SaveStages:       c.enableBuilderContentScanning(),
+		StageLabels:      c.enableBuilderContentScanning(),
 	}
 	if c.Params.Hermetic {
 		wrapper := cliWrappers.JoinWrappers(
@@ -2695,6 +2697,11 @@ func (c *Build) runSyftScans() (err error) {
 	return nil
 }
 
+func (c *Build) enableBuilderContentScanning() bool {
+	return c.Params.BuilderMetadataOutput != "" &&
+		slices.Compare(c.parsedBuildahVersion, []int{1, 44, 0}) >= 0
+}
+
 func (c *Build) pushImage() (string, error) {
 	l.Logger.Infof("Pushing image to registry: %s", c.Params.OutputRef)
 
@@ -2765,13 +2772,14 @@ func (c *Build) writeResolvedBaseImages(pulledImages []BaseImage, outputPath str
 // SBOM builder content contextualization - reparenting SPDX CONTAINS
 // relationships from the final image to their origin builder/intermediate images.
 func (c *Build) scanBuilderContent() (err error) {
+	// Capo must never block the build - recover from panics and return as error.
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("capo builder content scanner panicked: %v", r)
 		}
 	}()
 
-	if slices.Compare(c.parsedBuildahVersion, []int{1, 44, 0}) < 0 {
+	if !c.enableBuilderContentScanning() {
 		l.Logger.Warnf(
 			"Skipping builder content scanning: buildah %s does not support"+
 				" --save-stages and --stage-labels (requires >= 1.44.0)",
