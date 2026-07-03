@@ -811,7 +811,7 @@ func (c *Build) run() error {
 
 	if c.Params.BuilderMetadataOutput != "" {
 		if err := c.scanBuilderContent(); err != nil {
-			l.Logger.Warnf("Builder content scanning failed: %v", err)
+			l.Logger.Errorf("Builder content scanning failed: %v", err)
 		}
 	}
 

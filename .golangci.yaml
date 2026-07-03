@@ -2,12 +2,6 @@
 
 version: "2"
 
-run:
-  build-tags:
-    # Exclude btrfs storage driver — capo dependency (go.podman.io/storage)
-    # requires btrfs-progs-devel headers which are not available in CI.
-    - exclude_graphdriver_btrfs
-
 # Disable all default linters and specify only ones we want below
 linters:
   default: none

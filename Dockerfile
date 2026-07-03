@@ -23,7 +23,7 @@ COPY --chown=1001:0 . .
 # For example, if we call make docker-build in a local env which has Apple Silicon,
 # the docker BUILDPLATFORM arg will be linux/arm64 when for Apple x86 it will be linux/amd64. Therefore,
 # by leaving it empty we can ensure that the container and binary shipped on it will have the same platform.
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -tags exclude_graphdriver_btrfs -o konflux-build-cli main.go
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -o konflux-build-cli main.go
 
 # Use the Konflux task-runner image as base for the Konflux Build CLI.
 # For more details and updates, refer to https://quay.io/konflux-ci/task-runner
