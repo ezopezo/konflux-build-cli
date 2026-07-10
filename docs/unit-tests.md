@@ -2,17 +2,17 @@
 
 To run all unit tests:
 ```sh
-go test ./pkg/...
+go test -tags exclude_graphdriver_btrfs ./pkg/...
 ```
 
 To run unit tests for a package:
 ```sh
-go test ./pkg/commands
+go test -tags exclude_graphdriver_btrfs ./pkg/commands
 ```
 
 To run specific test from terminal execute:
 ```sh
-go test -run ^TestMyCommand_SuccessScenario$ ./pkg/...
+go test -tags exclude_graphdriver_btrfs -run ^TestMyCommand_SuccessScenario$ ./pkg/...
 ```
 
 For a developer, to run or debug a specific test or run all tests in a single file, it's most convenient to use UI of your IDE.
@@ -25,5 +25,5 @@ To avoid unexpected failures, you can set the `TMPDIR` environment variable.
 For example:
 ```sh
 mkdir .tmpdir
-TMPDIR="$(pwd)/.tmpdir" go test ./...
+TMPDIR="$(pwd)/.tmpdir" go test -tags exclude_graphdriver_btrfs ./...
 ```
