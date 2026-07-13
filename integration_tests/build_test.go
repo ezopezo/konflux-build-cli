@@ -87,6 +87,7 @@ type BuildParams struct {
 	SyftSelectCatalogers       string
 	SBOMFormat                 string
 	BuilderMetadataOutput      string
+	AdditionalTags             []string
 	ExtraArgs                  []string
 }
 
@@ -420,6 +421,10 @@ func runBuildWithOutput(container *TestRunnerContainer, buildParams BuildParams)
 	}
 	if buildParams.BuilderMetadataOutput != "" {
 		args = append(args, "--builder-metadata-output", buildParams.BuilderMetadataOutput)
+	}
+	if len(buildParams.AdditionalTags) > 0 {
+		args = append(args, "--additional-tags")
+		args = append(args, buildParams.AdditionalTags...)
 	}
 	if len(buildParams.ExtraArgs) > 0 {
 		args = append(args, "--")
@@ -871,6 +876,46 @@ LABEL %s="1h"
 		tagExists, err := imageRegistry.CheckTagExistence(imageRepoUrl, tag)
 		Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("failed to check for %s tag existence", tag))
 		Expect(tagExists).To(BeTrue(), fmt.Sprintf("Expected %s to exist in registry", outputRef))
+	})
+
+	t.Run("BuildAndPushAdditionalTags", func(t *testing.T) {
+		SetupGomega(t)
+
+		imageRegistry := setupImageRegistry(t)
+
+		contextDir := setupTestContext(t)
+		writeContainerfile(contextDir, fmt.Sprintf(`
+FROM scratch
+LABEL %s="1h"
+`, QuayExpiresAfterLabelName))
+
+		imageRepoUrl := imageRegistry.GetTestNamespace() + "test-additional-tags"
+
+		mainTag := GenerateUniqueTag(t)
+		addTag1 := mainTag + "-additional-1"
+		addTag2 := mainTag + "-additional-2"
+
+		buildParams := BuildParams{
+			Context:        contextDir,
+			OutputRef:      imageRepoUrl + ":" + mainTag,
+			Push:           true,
+			AdditionalTags: []string{addTag1, addTag2},
+		}
+
+		container := setupBuildContainerWithCleanup(t, buildParams, imageRegistry)
+
+		err := runBuild(container, buildParams)
+		Expect(err).ToNot(HaveOccurred())
+
+		for _, tag := range []string{mainTag, addTag1, addTag2} {
+			image := imageRepoUrl + ":" + tag
+			err = container.ExecuteCommand("buildah", "images", image)
+			Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("Expected %s to exist in local buildah storage", image))
+
+			tagExists, err := imageRegistry.CheckTagExistence(imageRepoUrl, tag)
+			Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("failed to check for %s tag existence", tag))
+			Expect(tagExists).To(BeTrue(), fmt.Sprintf("Expected %s to exist in registry", image))
+		}
 	})
 
 	t.Run("WithExtraArgs", func(t *testing.T) {
