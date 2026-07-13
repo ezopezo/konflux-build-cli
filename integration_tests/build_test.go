@@ -4212,104 +4212,105 @@ RUN rm -r /etc/yum.repos.d && mkdir /etc/yum.repos.d
 			"--syft-select-catalogers should have disabled the RPM DB cataloger")
 	})
 
-	// Builder metadata tests use --save-stages which saves intermediate images
-	// in buildah storage. Capo finds intermediate images by matching stage alias
-	// and base pullspec labels (io.buildah.stage.name, io.buildah.stage.base).
-	// With shared storage, leftover intermediate images from previous builds can
-	// match instead of the current one. Each subtest needs its own storage.
-	setupBuildContainerWithIsolatedStorage := func(t *testing.T, buildParams BuildParams) *TestRunnerContainer {
-		ownStorage, err := createContainerStorageDir()
-		t.Cleanup(func() { removeContainerStorageDir(ownStorage) })
-		Expect(err).ToNot(HaveOccurred())
-		return setupBuildContainerWithCleanup(t, buildParams, nil,
-			maybeMountContainerStorage(ownStorage, "taskuser"))
-	}
+	t.Run("BuilderMetadataOutput", func(t *testing.T) {
+		// Builder metadata tests use --save-stages which saves intermediate images
+		// in buildah storage. Capo finds intermediate images by matching stage alias
+		// and base pullspec labels (io.buildah.stage.name, io.buildah.stage.base).
+		// With shared storage, leftover intermediate images from previous builds can
+		// match instead of the current one. Each subtest needs its own storage.
+		setupBuildContainerWithIsolatedStorage := func(t *testing.T, buildParams BuildParams) *TestRunnerContainer {
+			ownStorage, err := createContainerStorageDir()
+			t.Cleanup(func() { removeContainerStorageDir(ownStorage) })
+			Expect(err).ToNot(HaveOccurred())
+			return setupBuildContainerWithCleanup(t, buildParams, nil,
+				maybeMountContainerStorage(ownStorage, "taskuser"))
+		}
 
-	t.Run("BuilderMetadataOutput_MultiStage", func(t *testing.T) {
-		SetupGomega(t)
+		t.Run("MultiStage", func(t *testing.T) {
+			SetupGomega(t)
 
-		contextDir := setupTestContext(t)
-		testutil.WriteFileTree(t, contextDir, map[string]string{
-			"go.mod": "module test\n\ngo 1.21\n\nrequire github.com/google/uuid v1.6.0\n",
-		})
-		writeContainerfile(contextDir, `
+			contextDir := setupTestContext(t)
+			testutil.WriteFileTree(t, contextDir, map[string]string{
+				"go.mod": "module test\n\ngo 1.21\n\nrequire github.com/google/uuid v1.6.0\n",
+			})
+			writeContainerfile(contextDir, `
 FROM `+baseImage+` AS builder
 COPY go.mod /opt/go.mod
 FROM `+baseImage+`
 COPY --from=builder /opt/go.mod /opt/go.mod
 `)
 
-		outputRef := "localhost/test-builder-metadata:" + GenerateUniqueTag(t)
+			outputRef := "localhost/test-builder-metadata:" + GenerateUniqueTag(t)
 
-		buildParams := BuildParams{
-			Context:               contextDir,
-			OutputRef:             outputRef,
-			BuilderMetadataOutput: "/workspace/builder-metadata.json",
-		}
+			buildParams := BuildParams{
+				Context:               contextDir,
+				OutputRef:             outputRef,
+				BuilderMetadataOutput: "/workspace/builder-metadata.json",
+			}
 
-		container := setupBuildContainerWithIsolatedStorage(t, buildParams)
+			container := setupBuildContainerWithIsolatedStorage(t, buildParams)
 
-		Expect(runBuild(container, buildParams)).To(Succeed())
+			Expect(runBuild(container, buildParams)).To(Succeed())
 
-		metadataBytes, readErr := os.ReadFile(filepath.Join(contextDir, "builder-metadata.json"))
-		Expect(readErr).ToNot(HaveOccurred(), "builder metadata file should exist")
+			metadataBytes, readErr := os.ReadFile(filepath.Join(contextDir, "builder-metadata.json"))
+			Expect(readErr).ToNot(HaveOccurred(), "builder metadata file should exist")
 
-		var metadata struct {
-			Packages []struct {
-				PackageURL string `json:"purl"`
-				OriginType string `json:"origin_type"`
-				Pullspec   string `json:"pullspec"`
-				StageAlias string `json:"stage_alias"`
-			} `json:"packages"`
-		}
-		Expect(json.Unmarshal(metadataBytes, &metadata)).To(Succeed())
+			var metadata struct {
+				Packages []struct {
+					PackageURL string `json:"purl"`
+					OriginType string `json:"origin_type"`
+					Pullspec   string `json:"pullspec"`
+					StageAlias string `json:"stage_alias"`
+				} `json:"packages"`
+			}
+			Expect(json.Unmarshal(metadataBytes, &metadata)).To(Succeed())
 
-		Expect(metadata.Packages).To(HaveLen(1))
-		Expect(metadata.Packages[0].PackageURL).To(Equal("pkg:golang/github.com/google/uuid@v1.6.0"))
-		Expect(metadata.Packages[0].OriginType).To(Equal("intermediate"))
-		Expect(metadata.Packages[0].Pullspec).To(Equal("registry.access.redhat.com/ubi10/ubi-micro@sha256:2946fa1b951addbcd548ef59193dc0af9b3e9fedb0287b4ddb6e697b06581622"))
-		Expect(metadata.Packages[0].StageAlias).To(Equal("builder"))
-	})
+			Expect(metadata.Packages).To(HaveLen(1))
+			Expect(metadata.Packages[0].PackageURL).To(Equal("pkg:golang/github.com/google/uuid@v1.6.0"))
+			Expect(metadata.Packages[0].OriginType).To(Equal("intermediate"))
+			Expect(metadata.Packages[0].Pullspec).To(Equal("registry.access.redhat.com/ubi10/ubi-micro@sha256:2946fa1b951addbcd548ef59193dc0af9b3e9fedb0287b4ddb6e697b06581622"))
+			Expect(metadata.Packages[0].StageAlias).To(Equal("builder"))
+		})
 
-	t.Run("BuilderMetadataOutput_SingleStage", func(t *testing.T) {
-		SetupGomega(t)
+		t.Run("SingleStage", func(t *testing.T) {
+			SetupGomega(t)
 
-		contextDir := setupTestContext(t)
-		writeContainerfile(contextDir, `
+			contextDir := setupTestContext(t)
+			writeContainerfile(contextDir, `
 FROM `+baseImage+`
 RUN echo hello
 `)
-		outputRef := "localhost/test-builder-metadata-single:" + GenerateUniqueTag(t)
+			outputRef := "localhost/test-builder-metadata-single:" + GenerateUniqueTag(t)
 
-		buildParams := BuildParams{
-			Context:               contextDir,
-			OutputRef:             outputRef,
-			BuilderMetadataOutput: "/workspace/builder-metadata.json",
-		}
+			buildParams := BuildParams{
+				Context:               contextDir,
+				OutputRef:             outputRef,
+				BuilderMetadataOutput: "/workspace/builder-metadata.json",
+			}
 
-		container := setupBuildContainerWithIsolatedStorage(t, buildParams)
+			container := setupBuildContainerWithIsolatedStorage(t, buildParams)
 
-		Expect(runBuild(container, buildParams)).To(Succeed())
+			Expect(runBuild(container, buildParams)).To(Succeed())
 
-		metadataBytes, err := os.ReadFile(filepath.Join(contextDir, "builder-metadata.json"))
-		Expect(err).ToNot(HaveOccurred(), "builder metadata file should exist even for single-stage")
+			metadataBytes, err := os.ReadFile(filepath.Join(contextDir, "builder-metadata.json"))
+			Expect(err).ToNot(HaveOccurred(), "builder metadata file should exist even for single-stage")
 
-		var metadata struct {
-			Packages []json.RawMessage `json:"packages"`
-		}
-		err = json.Unmarshal(metadataBytes, &metadata)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(metadata.Packages).To(BeEmpty(), "single-stage build should result in empty packages in builder metadata")
-	})
-
-	t.Run("BuilderMetadataOutput_WithTarget", func(t *testing.T) {
-		SetupGomega(t)
-
-		contextDir := setupTestContext(t)
-		testutil.WriteFileTree(t, contextDir, map[string]string{
-			"go.mod": "module test\n\ngo 1.21\n\nrequire github.com/google/uuid v1.6.0\n",
+			var metadata struct {
+				Packages []json.RawMessage `json:"packages"`
+			}
+			err = json.Unmarshal(metadataBytes, &metadata)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(metadata.Packages).To(BeEmpty(), "single-stage build should result in empty packages in builder metadata")
 		})
-		writeContainerfile(contextDir, `
+
+		t.Run("WithTarget", func(t *testing.T) {
+			SetupGomega(t)
+
+			contextDir := setupTestContext(t)
+			testutil.WriteFileTree(t, contextDir, map[string]string{
+				"go.mod": "module test\n\ngo 1.21\n\nrequire github.com/google/uuid v1.6.0\n",
+			})
+			writeContainerfile(contextDir, `
 FROM `+baseImage+` AS builder
 COPY go.mod /opt/go.mod
 FROM `+baseImage+` AS middle
@@ -4318,45 +4319,45 @@ FROM `+baseImage+` AS final
 RUN echo "this stage should be ignored"
 `)
 
-		outputRef := "localhost/test-builder-metadata-target:" + GenerateUniqueTag(t)
+			outputRef := "localhost/test-builder-metadata-target:" + GenerateUniqueTag(t)
 
-		buildParams := BuildParams{
-			Context:               contextDir,
-			OutputRef:             outputRef,
-			Target:                "middle",
-			BuilderMetadataOutput: "/workspace/builder-metadata.json",
-		}
+			buildParams := BuildParams{
+				Context:               contextDir,
+				OutputRef:             outputRef,
+				Target:                "middle",
+				BuilderMetadataOutput: "/workspace/builder-metadata.json",
+			}
 
-		container := setupBuildContainerWithIsolatedStorage(t, buildParams)
+			container := setupBuildContainerWithIsolatedStorage(t, buildParams)
 
-		Expect(runBuild(container, buildParams)).To(Succeed())
+			Expect(runBuild(container, buildParams)).To(Succeed())
 
-		metadataBytes, readErr := os.ReadFile(filepath.Join(contextDir, "builder-metadata.json"))
-		Expect(readErr).ToNot(HaveOccurred(), "builder metadata file should exist")
+			metadataBytes, readErr := os.ReadFile(filepath.Join(contextDir, "builder-metadata.json"))
+			Expect(readErr).ToNot(HaveOccurred(), "builder metadata file should exist")
 
-		var metadata struct {
-			Packages []struct {
-				PackageURL string `json:"purl"`
-				OriginType string `json:"origin_type"`
-				StageAlias string `json:"stage_alias"`
-			} `json:"packages"`
-		}
-		Expect(json.Unmarshal(metadataBytes, &metadata)).To(Succeed())
+			var metadata struct {
+				Packages []struct {
+					PackageURL string `json:"purl"`
+					OriginType string `json:"origin_type"`
+					StageAlias string `json:"stage_alias"`
+				} `json:"packages"`
+			}
+			Expect(json.Unmarshal(metadataBytes, &metadata)).To(Succeed())
 
-		Expect(metadata.Packages).To(HaveLen(1))
-		Expect(metadata.Packages[0].PackageURL).To(Equal("pkg:golang/github.com/google/uuid@v1.6.0"))
-		Expect(metadata.Packages[0].OriginType).To(Equal("intermediate"))
-		Expect(metadata.Packages[0].StageAlias).To(Equal("builder"))
-	})
-
-	t.Run("BuilderMetadataOutput_WithBuildArgs", func(t *testing.T) {
-		SetupGomega(t)
-
-		contextDir := setupTestContext(t)
-		testutil.WriteFileTree(t, contextDir, map[string]string{
-			"go.mod": "module test\n\ngo 1.21\n\nrequire github.com/google/uuid v1.6.0\n",
+			Expect(metadata.Packages).To(HaveLen(1))
+			Expect(metadata.Packages[0].PackageURL).To(Equal("pkg:golang/github.com/google/uuid@v1.6.0"))
+			Expect(metadata.Packages[0].OriginType).To(Equal("intermediate"))
+			Expect(metadata.Packages[0].StageAlias).To(Equal("builder"))
 		})
-		writeContainerfile(contextDir, `
+
+		t.Run("WithBuildArgs", func(t *testing.T) {
+			SetupGomega(t)
+
+			contextDir := setupTestContext(t)
+			testutil.WriteFileTree(t, contextDir, map[string]string{
+				"go.mod": "module test\n\ngo 1.21\n\nrequire github.com/google/uuid v1.6.0\n",
+			})
+			writeContainerfile(contextDir, `
 FROM `+baseImage+` AS builder
 ARG DEST
 COPY go.mod $DEST/go.mod
@@ -4364,47 +4365,47 @@ FROM `+baseImage+`
 COPY --from=builder /custom/go.mod /custom/go.mod
 `)
 
-		outputRef := "localhost/test-builder-metadata-args:" + GenerateUniqueTag(t)
+			outputRef := "localhost/test-builder-metadata-args:" + GenerateUniqueTag(t)
 
-		buildParams := BuildParams{
-			Context:               contextDir,
-			OutputRef:             outputRef,
-			BuildArgs:             []string{"DEST=/custom"},
-			BuilderMetadataOutput: "/workspace/builder-metadata.json",
-		}
+			buildParams := BuildParams{
+				Context:               contextDir,
+				OutputRef:             outputRef,
+				BuildArgs:             []string{"DEST=/custom"},
+				BuilderMetadataOutput: "/workspace/builder-metadata.json",
+			}
 
-		container := setupBuildContainerWithIsolatedStorage(t, buildParams)
+			container := setupBuildContainerWithIsolatedStorage(t, buildParams)
 
-		Expect(runBuild(container, buildParams)).To(Succeed())
+			Expect(runBuild(container, buildParams)).To(Succeed())
 
-		metadataBytes, readErr := os.ReadFile(filepath.Join(contextDir, "builder-metadata.json"))
-		Expect(readErr).ToNot(HaveOccurred(), "builder metadata file should exist")
+			metadataBytes, readErr := os.ReadFile(filepath.Join(contextDir, "builder-metadata.json"))
+			Expect(readErr).ToNot(HaveOccurred(), "builder metadata file should exist")
 
-		var metadata struct {
-			Packages []struct {
-				PackageURL string `json:"purl"`
-				OriginType string `json:"origin_type"`
-				StageAlias string `json:"stage_alias"`
-			} `json:"packages"`
-		}
-		Expect(json.Unmarshal(metadataBytes, &metadata)).To(Succeed())
+			var metadata struct {
+				Packages []struct {
+					PackageURL string `json:"purl"`
+					OriginType string `json:"origin_type"`
+					StageAlias string `json:"stage_alias"`
+				} `json:"packages"`
+			}
+			Expect(json.Unmarshal(metadataBytes, &metadata)).To(Succeed())
 
-		Expect(metadata.Packages).To(HaveLen(1),
-			"capo should find the package at /custom/go.mod (ARG DEST resolved via --build-arg)")
-		Expect(metadata.Packages[0].PackageURL).To(Equal("pkg:golang/github.com/google/uuid@v1.6.0"))
-		Expect(metadata.Packages[0].OriginType).To(Equal("intermediate"))
-		Expect(metadata.Packages[0].StageAlias).To(Equal("builder"))
-	})
-
-	t.Run("BuilderMetadataOutput_WithBuildArgsFile", func(t *testing.T) {
-		SetupGomega(t)
-
-		contextDir := setupTestContext(t)
-		testutil.WriteFileTree(t, contextDir, map[string]string{
-			"go.mod":          "module test\n\ngo 1.21\n\nrequire github.com/google/uuid v1.6.0\n",
-			"build-args-file": "DEST_PART_1=/custom\nDEST_PART_2=/path",
+			Expect(metadata.Packages).To(HaveLen(1),
+				"capo should find the package at /custom/go.mod (ARG DEST resolved via --build-arg)")
+			Expect(metadata.Packages[0].PackageURL).To(Equal("pkg:golang/github.com/google/uuid@v1.6.0"))
+			Expect(metadata.Packages[0].OriginType).To(Equal("intermediate"))
+			Expect(metadata.Packages[0].StageAlias).To(Equal("builder"))
 		})
-		writeContainerfile(contextDir, `
+
+		t.Run("WithBuildArgsFile", func(t *testing.T) {
+			SetupGomega(t)
+
+			contextDir := setupTestContext(t)
+			testutil.WriteFileTree(t, contextDir, map[string]string{
+				"go.mod":          "module test\n\ngo 1.21\n\nrequire github.com/google/uuid v1.6.0\n",
+				"build-args-file": "DEST_PART_1=/custom\nDEST_PART_2=/path",
+			})
+			writeContainerfile(contextDir, `
 FROM `+baseImage+` AS builder
 ARG DEST_PART_1
 ARG DEST_PART_2
@@ -4413,81 +4414,82 @@ FROM `+baseImage+`
 COPY --from=builder /custom/path/go.mod /opt/go.mod
 `)
 
-		outputRef := "localhost/test-builder-metadata-argsfile:" + GenerateUniqueTag(t)
+			outputRef := "localhost/test-builder-metadata-argsfile:" + GenerateUniqueTag(t)
 
-		buildParams := BuildParams{
-			Context:               contextDir,
-			OutputRef:             outputRef,
-			BuildArgsFile:         "/workspace/build-args-file",
-			BuilderMetadataOutput: "/workspace/builder-metadata.json",
-		}
+			buildParams := BuildParams{
+				Context:               contextDir,
+				OutputRef:             outputRef,
+				BuildArgsFile:         "/workspace/build-args-file",
+				BuilderMetadataOutput: "/workspace/builder-metadata.json",
+			}
 
-		container := setupBuildContainerWithIsolatedStorage(t, buildParams)
+			container := setupBuildContainerWithIsolatedStorage(t, buildParams)
 
-		Expect(runBuild(container, buildParams)).To(Succeed())
+			Expect(runBuild(container, buildParams)).To(Succeed())
 
-		metadataBytes, readErr := os.ReadFile(filepath.Join(contextDir, "builder-metadata.json"))
-		Expect(readErr).ToNot(HaveOccurred(), "builder metadata file should exist")
+			metadataBytes, readErr := os.ReadFile(filepath.Join(contextDir, "builder-metadata.json"))
+			Expect(readErr).ToNot(HaveOccurred(), "builder metadata file should exist")
 
-		var metadata struct {
-			Packages []struct {
-				PackageURL string `json:"purl"`
-				OriginType string `json:"origin_type"`
-				StageAlias string `json:"stage_alias"`
-			} `json:"packages"`
-		}
-		Expect(json.Unmarshal(metadataBytes, &metadata)).To(Succeed())
+			var metadata struct {
+				Packages []struct {
+					PackageURL string `json:"purl"`
+					OriginType string `json:"origin_type"`
+					StageAlias string `json:"stage_alias"`
+				} `json:"packages"`
+			}
+			Expect(json.Unmarshal(metadataBytes, &metadata)).To(Succeed())
 
-		Expect(metadata.Packages).To(HaveLen(1),
-			"capo should find the package at /custom/path/go.mod (ARGs resolved via --build-args-file)")
-		Expect(metadata.Packages[0].PackageURL).To(Equal("pkg:golang/github.com/google/uuid@v1.6.0"))
-		Expect(metadata.Packages[0].OriginType).To(Equal("intermediate"))
-		Expect(metadata.Packages[0].StageAlias).To(Equal("builder"))
-	})
-
-	t.Run("BuilderMetadataOutput_WithEnvVars", func(t *testing.T) {
-		SetupGomega(t)
-
-		contextDir := setupTestContext(t)
-		testutil.WriteFileTree(t, contextDir, map[string]string{
-			"go.mod": "module test\n\ngo 1.21\n\nrequire github.com/google/uuid v1.6.0\n",
+			Expect(metadata.Packages).To(HaveLen(1),
+				"capo should find the package at /custom/path/go.mod (ARGs resolved via --build-args-file)")
+			Expect(metadata.Packages[0].PackageURL).To(Equal("pkg:golang/github.com/google/uuid@v1.6.0"))
+			Expect(metadata.Packages[0].OriginType).To(Equal("intermediate"))
+			Expect(metadata.Packages[0].StageAlias).To(Equal("builder"))
 		})
-		writeContainerfile(contextDir, `
+
+		t.Run("WithEnvVars", func(t *testing.T) {
+			SetupGomega(t)
+
+			contextDir := setupTestContext(t)
+			testutil.WriteFileTree(t, contextDir, map[string]string{
+				"go.mod": "module test\n\ngo 1.21\n\nrequire github.com/google/uuid v1.6.0\n",
+			})
+			writeContainerfile(contextDir, `
 FROM `+baseImage+` AS builder
 COPY go.mod $DEST/go.mod
 FROM `+baseImage+`
 COPY --from=builder /envpath/go.mod /opt/go.mod
 `)
 
-		outputRef := "localhost/test-builder-metadata-envs:" + GenerateUniqueTag(t)
+			outputRef := "localhost/test-builder-metadata-envs:" + GenerateUniqueTag(t)
 
-		buildParams := BuildParams{
-			Context:               contextDir,
-			OutputRef:             outputRef,
-			Envs:                  []string{"DEST=/envpath"},
-			BuilderMetadataOutput: "/workspace/builder-metadata.json",
-		}
+			buildParams := BuildParams{
+				Context:               contextDir,
+				OutputRef:             outputRef,
+				Envs:                  []string{"DEST=/envpath"},
+				BuilderMetadataOutput: "/workspace/builder-metadata.json",
+			}
 
-		container := setupBuildContainerWithIsolatedStorage(t, buildParams)
+			container := setupBuildContainerWithIsolatedStorage(t, buildParams)
 
-		Expect(runBuild(container, buildParams)).To(Succeed())
+			Expect(runBuild(container, buildParams)).To(Succeed())
 
-		metadataBytes, readErr := os.ReadFile(filepath.Join(contextDir, "builder-metadata.json"))
-		Expect(readErr).ToNot(HaveOccurred(), "builder metadata file should exist")
+			metadataBytes, readErr := os.ReadFile(filepath.Join(contextDir, "builder-metadata.json"))
+			Expect(readErr).ToNot(HaveOccurred(), "builder metadata file should exist")
 
-		var metadata struct {
-			Packages []struct {
-				PackageURL string `json:"purl"`
-				OriginType string `json:"origin_type"`
-				StageAlias string `json:"stage_alias"`
-			} `json:"packages"`
-		}
-		Expect(json.Unmarshal(metadataBytes, &metadata)).To(Succeed())
+			var metadata struct {
+				Packages []struct {
+					PackageURL string `json:"purl"`
+					OriginType string `json:"origin_type"`
+					StageAlias string `json:"stage_alias"`
+				} `json:"packages"`
+			}
+			Expect(json.Unmarshal(metadataBytes, &metadata)).To(Succeed())
 
-		Expect(metadata.Packages).To(HaveLen(1),
-			"capo should find the package at /envpath/go.mod (env var resolved via --envs)")
-		Expect(metadata.Packages[0].PackageURL).To(Equal("pkg:golang/github.com/google/uuid@v1.6.0"))
-		Expect(metadata.Packages[0].OriginType).To(Equal("intermediate"))
-		Expect(metadata.Packages[0].StageAlias).To(Equal("builder"))
+			Expect(metadata.Packages).To(HaveLen(1),
+				"capo should find the package at /envpath/go.mod (env var resolved via --envs)")
+			Expect(metadata.Packages[0].PackageURL).To(Equal("pkg:golang/github.com/google/uuid@v1.6.0"))
+			Expect(metadata.Packages[0].OriginType).To(Equal("intermediate"))
+			Expect(metadata.Packages[0].StageAlias).To(Equal("builder"))
+		})
 	})
 }
