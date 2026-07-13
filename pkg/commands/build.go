@@ -2561,7 +2561,7 @@ func (c *Build) buildImage() (err error) {
 	buildArgs := &cliWrappers.BuildahBuildArgs{
 		Containerfile:    containerfilePath,
 		ContextDir:       c.effectiveContextDir(),
-		OutputRef:        c.Params.OutputRef,
+		Tags:             []string{c.Params.OutputRef},
 		Secrets:          c.buildahSecrets,
 		Mounts:           c.buildahMounts,
 		Volumes:          c.buildahVolumes,

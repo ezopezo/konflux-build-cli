@@ -1353,7 +1353,7 @@ func Test_Build_Run(t *testing.T) {
 		isBuildCalled := false
 		_mockBuildahCli.BuildFunc = func(args *cliwrappers.BuildahBuildArgs) error {
 			isBuildCalled = true
-			g.Expect(args.OutputRef).To(Equal("quay.io/org/image:tag"))
+			g.Expect(args.Tags).To(Equal([]string{"quay.io/org/image:tag"}))
 			g.Expect(args.ContextDir).To(Equal(c.Params.Context))
 			g.Expect(args.Containerfile).To(ContainSubstring("Containerfile"))
 			return nil
@@ -1390,7 +1390,7 @@ func Test_Build_Run(t *testing.T) {
 		isBuildCalled := false
 		_mockBuildahCli.BuildFunc = func(args *cliwrappers.BuildahBuildArgs) error {
 			isBuildCalled = true
-			g.Expect(args.OutputRef).To(Equal("quay.io/org/image:tag"))
+			g.Expect(args.Tags).To(Equal([]string{"quay.io/org/image:tag"}))
 			return nil
 		}
 
