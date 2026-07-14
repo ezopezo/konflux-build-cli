@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"maps"
 	"os"
 	"path/filepath"
@@ -17,11 +18,14 @@ import (
 	"time"
 
 	"github.com/containers/image/v5/docker/reference"
+	capo "github.com/konflux-ci/capo/pkg"
+	capoContainerfile "github.com/konflux-ci/capo/pkg/containerfile"
 	cliWrappers "github.com/konflux-ci/konflux-build-cli/pkg/cliwrappers"
 	"github.com/konflux-ci/konflux-build-cli/pkg/common"
 	dfeditor "github.com/konflux-ci/konflux-build-cli/pkg/common/containerfile_editor"
 	"github.com/opencontainers/go-digest"
 	"github.com/package-url/packageurl-go"
+	sloglogrus "github.com/samber/slog-logrus/v2"
 	"github.com/spf13/cobra"
 
 	"github.com/containerd/platforms"
@@ -307,6 +311,12 @@ var BuildParamsConfig = map[string]common.Parameter{
 		TypeKind:   reflect.String,
 		Usage:      "Take the set of images that the containerfile depends on and write them to the file at the specified path.\nEach line in the file is \"<ref-from-containerfile> <canonical-ref>\",\nwhere canonical-ref includes the fully qualified name, digest and optionaly tag (if ref-from-containerfile has a tag).",
 	},
+	"builder-metadata-output": {
+		Name:       "builder-metadata-output",
+		EnvVarName: "KBC_BUILD_BUILDER_METADATA_OUTPUT",
+		TypeKind:   reflect.String,
+		Usage:      "Path to write builder content metadata (capo output) for mobster consumption.\nEnables --save-stages and --stage-labels in buildah build.",
+	},
 	"rhsm-entitlements": {
 		Name:       "rhsm-entitlements",
 		ShortName:  "",
@@ -484,6 +494,7 @@ type BuildParams struct {
 	PrefetchOutputMount        string   `paramName:"prefetch-output-mount"`
 	PrefetchEnvMount           string   `paramName:"prefetch-env-mount"`
 	ResolvedBaseImagesOutput   string   `paramName:"resolved-base-images-output"`
+	BuilderMetadataOutput      string   `paramName:"builder-metadata-output"`
 	RHSMEntitlements           string   `paramName:"rhsm-entitlements"`
 	RHSMActivationKey          string   `paramName:"rhsm-activation-key"`
 	RHSMOrg                    string   `paramName:"rhsm-org"`
@@ -798,6 +809,12 @@ func (c *Build) run() error {
 			return err
 		}
 		c.Results.Digest = digest
+	}
+
+	if c.Params.BuilderMetadataOutput != "" {
+		if err := c.scanBuilderContent(); err != nil {
+			l.Logger.Errorf("Builder content scanning failed: %v", err)
+		}
 	}
 
 	if c.Params.ContainerfileJsonOutput != "" {
@@ -2568,6 +2585,11 @@ func (c *Build) buildImage() (err error) {
 		CapDrop:          c.Params.CapDrop,
 		Devices:          c.Params.Devices,
 		Ulimits:          c.Params.Ulimits,
+		SaveStages:       c.enableBuilderContentScanning(),
+		// Note: --stage-labels adds io.buildah.stage.{name,base} labels to all
+		// stages including the final image. These labels will be missing from
+		// labels.json (generated before build by determineFinalLabels).
+		StageLabels: c.enableBuilderContentScanning(),
 	}
 	if c.Params.Hermetic {
 		wrapper := cliWrappers.JoinWrappers(
@@ -2678,6 +2700,11 @@ func (c *Build) runSyftScans() (err error) {
 	return nil
 }
 
+func (c *Build) enableBuilderContentScanning() bool {
+	return c.Params.BuilderMetadataOutput != "" &&
+		slices.Compare(c.parsedBuildahVersion, []int{1, 44, 0}) >= 0
+}
+
 func (c *Build) pushImage() (string, error) {
 	l.Logger.Infof("Pushing image to registry: %s", c.Params.OutputRef)
 
@@ -2739,6 +2766,84 @@ func (c *Build) writeResolvedBaseImages(pulledImages []BaseImage, outputPath str
 		return fmt.Errorf("writing resolved base images: %w", err)
 	}
 	l.Logger.Info("Resolved base images written successfully")
+	return nil
+}
+
+// scanBuilderContent uses capo (https://github.com/konflux-ci/capo) to identify
+// content copied from builder stages to the final image in multi-stage builds.
+// The output is consumed by mobster (in a separate Tekton step) for Contextual
+// SBOM builder content contextualization - reparenting SPDX CONTAINS
+// relationships from the final image to their origin builder/intermediate images.
+func (c *Build) scanBuilderContent() (err error) {
+	// Capo must never block the build - recover from panics and return as error.
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("capo builder content scanner panicked: %v", r)
+		}
+	}()
+
+	if !c.enableBuilderContentScanning() {
+		l.Logger.Warnf(
+			"Skipping builder content scanning: buildah %s does not support"+
+				" --save-stages and --stage-labels (requires >= 1.44.0)",
+			c.buildahVersion.Version,
+		)
+		return nil
+	}
+
+	l.Logger.Info("Scanning builder content with capo...")
+
+	containerfilePath := c.containerfilePath
+	if c.containerfileCopyPath != "" {
+		containerfilePath = c.containerfileCopyPath
+	}
+
+	f, err := os.Open(containerfilePath) //nolint:gosec // containerfilePath is from build context
+	if err != nil {
+		return fmt.Errorf("opening containerfile for capo: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	// Currently only .konflux-buildinfo is used as a build context (see
+	// buildImage — "we don't expose any way to add build contexts"). If more
+	// build contexts are added in the future, they must be included here too.
+	buildContexts := map[string]string{}
+	if c.buildinfoBuildContext != nil {
+		buildContexts[c.buildinfoBuildContext.Name] = c.buildinfoBuildContext.Location
+	}
+	cf, err := capoContainerfile.Parse(f, capoContainerfile.BuildOptions{
+		Args:             processKeyValueEnvs(c.Params.BuildArgs),
+		BuildArgFilePath: c.Params.BuildArgsFile,
+		EnvVars:          processKeyValueEnvs(c.Params.Envs),
+		Target:           c.Params.Target,
+		BuildContexts:    buildContexts,
+	})
+	if err != nil {
+		return fmt.Errorf("parsing containerfile with capo: %w", err)
+	}
+
+	scanner, err := capo.NewScanner(
+		capo.WithLogger(slog.New(sloglogrus.Option{Logger: l.Logger}.NewLogrusHandler())),
+	)
+	if err != nil {
+		return fmt.Errorf("creating capo scanner: %w", err)
+	}
+
+	metadata, err := scanner.Scan(cf)
+	if err != nil {
+		return fmt.Errorf("scanning builder content: %w", err)
+	}
+
+	output, err := json.Marshal(metadata)
+	if err != nil {
+		return fmt.Errorf("marshaling builder content: %w", err)
+	}
+
+	if err := os.WriteFile(c.Params.BuilderMetadataOutput, output, 0644); err != nil {
+		return fmt.Errorf("writing builder content output: %w", err)
+	}
+
+	l.Logger.Infof("Builder content metadata written to %s", c.Params.BuilderMetadataOutput)
 	return nil
 }
 

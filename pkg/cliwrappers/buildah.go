@@ -84,6 +84,8 @@ type BuildahBuildArgs struct {
 	CapDrop          []string
 	Devices          []string
 	Ulimits          []string
+	SaveStages       bool
+	StageLabels      bool
 	ExtraArgs        []string
 	Wrapper          *WrapperCmd
 }
@@ -306,6 +308,14 @@ func (b *BuildahCli) Build(args *BuildahBuildArgs) error {
 
 	for _, ulimit := range args.Ulimits {
 		buildahArgs = append(buildahArgs, "--ulimit="+ulimit)
+	}
+
+	if args.SaveStages {
+		buildahArgs = append(buildahArgs, "--save-stages")
+	}
+
+	if args.StageLabels {
+		buildahArgs = append(buildahArgs, "--stage-labels")
 	}
 
 	// Append extra arguments before the context directory

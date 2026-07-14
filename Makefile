@@ -7,19 +7,23 @@ $(LOCALBIN):
 # Build binary
 ####################
 
+# Capo dependency (go.podman.io/storage) requires btrfs-progs-devel headers
+# unless excluded with this tag or CGO_ENABLED=0.
+BUILD_TAGS = -tags exclude_graphdriver_btrfs
+
 .PHONY: build
 build:
-	go build -o konflux-build-cli main.go
+	go build $(BUILD_TAGS) -o konflux-build-cli main.go
 
 # Build statically
 .PHONY: build-static
 build-static:
-	CGO_ENABLED=0 go build -o konflux-build-cli main.go
+	CGO_ENABLED=0 go build $(BUILD_TAGS) -o konflux-build-cli main.go
 
 # Build in debug mode
 .PHONY: build-debug
 build-debug:
-	go build -gcflags "all=-N -l" -o konflux-build-cli main.go
+	go build $(BUILD_TAGS) -gcflags "all=-N -l" -o konflux-build-cli main.go
 
 ####################
 # Tests
@@ -30,26 +34,26 @@ INTEGRATION_TEST_TIMEOUT = 20m
 # Run all unit tests
 .PHONY: unit-test
 unit-test:
-	go test ./pkg/...
+	go test $(BUILD_TAGS) ./pkg/...
 
 # Run unit tests for a specific package
 # Usage: make unit-test-<package-name>
 # Examples: make unit-test-commands ; make unit-test-cliwrappers
 .PHONY: unit-test-%
 unit-test-%:
-	go test ./pkg/$*
+	go test $(BUILD_TAGS) ./pkg/$*
 
 # Run all integration tests
 .PHONY: integration-test
 integration-test:
-	go test -timeout $(INTEGRATION_TEST_TIMEOUT) ./integration_tests
+	go test $(BUILD_TAGS) -timeout $(INTEGRATION_TEST_TIMEOUT) ./integration_tests
 
 # Run specific integration test
 # Usage: make integration-test-<test-name>
 # Examples: make integration-test-TestApplyTags ; make integration-test-TestBuild
 .PHONY: integration-test-%
 integration-test-%:
-	go test -timeout $(INTEGRATION_TEST_TIMEOUT) ./integration_tests -run $*
+	go test $(BUILD_TAGS) -timeout $(INTEGRATION_TEST_TIMEOUT) ./integration_tests -run $*
 
 ####################
 # Linters
@@ -64,7 +68,7 @@ fmt:
 
 .PHONY: vet
 vet:
-	go vet ./...
+	go vet $(BUILD_TAGS) ./...
 
 # Download golangci-lint locally if necessary
 .PHONY: golangci-lint

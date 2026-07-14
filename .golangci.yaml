@@ -2,6 +2,10 @@
 
 version: "2"
 
+run:
+  build-tags:
+    - exclude_graphdriver_btrfs
+
 # Disable all default linters and specify only ones we want below
 linters:
   default: none

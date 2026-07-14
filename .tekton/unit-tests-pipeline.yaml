@@ -54,7 +54,7 @@ spec:
               set -ex
               microdnf install -y go
               cd /source
-              go test -coverprofile=coverage.out -covermode=atomic ./pkg/...
+              go test -tags exclude_graphdriver_btrfs -coverprofile=coverage.out -covermode=atomic ./pkg/...
             volumeMounts:
             - name: source
               mountPath: /source

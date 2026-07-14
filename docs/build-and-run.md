@@ -3,15 +3,15 @@
 ## How to build
 
 ```sh
-go build -o konflux-build-cli main.go
+go build -tags exclude_graphdriver_btrfs -o konflux-build-cli main.go
 ```
 or statically:
 ```sh
-CGO_ENABLED=0 go build -o konflux-build-cli main.go
+CGO_ENABLED=0 go build -tags exclude_graphdriver_btrfs -o konflux-build-cli main.go
 ```
 or in debug mode:
 ```sh
-go build -gcflags "all=-N -l" -o konflux-build-cli main.go
+go build -tags exclude_graphdriver_btrfs -gcflags "all=-N -l" -o konflux-build-cli main.go
 ```
 
 ## How to run / debug a command on host

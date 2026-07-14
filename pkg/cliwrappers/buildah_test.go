@@ -409,6 +409,39 @@ func TestBuildahCli_Build(t *testing.T) {
 		g.Expect(capturedArgs).To(ContainElement("--ulimit=nproc=1024:2048"))
 		g.Expect(capturedArgs[len(capturedArgs)-1]).To(Equal(contextDir))
 	})
+
+	t.Run("should pass --save-stages and --stage-labels", func(t *testing.T) {
+		buildahCli, executor := setupBuildahCli()
+		var capturedArgs []string
+		executor.executeFunc = func(cmd cliwrappers.Cmd) (string, string, int, error) {
+			capturedArgs = cmd.Args
+			return "", "", 0, nil
+		}
+
+		err := buildahCli.Build(&cliwrappers.BuildahBuildArgs{
+			Containerfile: containerfile, ContextDir: contextDir, OutputRef: outputRef,
+			SaveStages: true, StageLabels: true,
+		})
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(capturedArgs).To(ContainElement("--save-stages"))
+		g.Expect(capturedArgs).To(ContainElement("--stage-labels"))
+	})
+
+	t.Run("should not pass --save-stages and --stage-labels when false", func(t *testing.T) {
+		buildahCli, executor := setupBuildahCli()
+		var capturedArgs []string
+		executor.executeFunc = func(cmd cliwrappers.Cmd) (string, string, int, error) {
+			capturedArgs = cmd.Args
+			return "", "", 0, nil
+		}
+
+		err := buildahCli.Build(&cliwrappers.BuildahBuildArgs{
+			Containerfile: containerfile, ContextDir: contextDir, OutputRef: outputRef,
+		})
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(capturedArgs).ToNot(ContainElement("--save-stages"))
+		g.Expect(capturedArgs).ToNot(ContainElement("--stage-labels"))
+	})
 }
 
 func findDigestFile(args []string) string {

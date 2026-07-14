@@ -20,18 +20,18 @@ Integration tests are located under `integration_tests` directory.
 
 To run specific test (test function) from terminal execute:
 ```sh
-go test -timeout 5m -run ^TestMyCommand$ ./integration_tests
+go test -tags exclude_graphdriver_btrfs -timeout 5m -run ^TestMyCommand$ ./integration_tests
 ```
 or if the test function has nested `t.Run`s:
 ```sh
-go test -timeout 5m -run ^TestBuild$/^UsesRunInstruction$ ./integration_tests
-go test -timeout 5m -run ^TestBuild$/^UsesRunInstruction$/^AsRoot$ ./integration_tests
+go test -tags exclude_graphdriver_btrfs -timeout 5m -run ^TestBuild$/^UsesRunInstruction$ ./integration_tests
+go test -tags exclude_graphdriver_btrfs -timeout 5m -run ^TestBuild$/^UsesRunInstruction$/^AsRoot$ ./integration_tests
 ```
 or use your IDE to run or debug one.
 
 To run all integration tests execute:
 ```sh
-go test -timeout 20m ./integration_tests
+go test -tags exclude_graphdriver_btrfs -timeout 20m ./integration_tests
 ```
 
 If an IDE is used to run inetgration tests, make sure to configure tests timeout.
@@ -52,7 +52,7 @@ ok  	github.com/konflux-ci/konflux-build-cli/integration_tests	(cached)
 ```
 and it's needed to rerun the tests anyway, add `-count=1` argument to the test command:
 ```sh
-go test -count=1 ./integration_tests
+go test -tags exclude_graphdriver_btrfs -count=1 ./integration_tests
 ```
 
 ## Integration tests settings
@@ -147,7 +147,7 @@ To avoid unexpected failures, you can set the `TMPDIR` environment variable.
 For example:
 ```sh
 mkdir .tmpdir
-TMPDIR="$(pwd)/.tmpdir" go test ./...
+TMPDIR="$(pwd)/.tmpdir" go test -tags exclude_graphdriver_btrfs ./...
 ```
 
 ## References

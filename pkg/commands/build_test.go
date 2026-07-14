@@ -533,6 +533,51 @@ func Test_Build_detectBuildahVersion(t *testing.T) {
 	})
 }
 
+func Test_Build_enableBuilderContentScanning(t *testing.T) {
+	tests := map[string]struct {
+		metadataOutput string
+		buildahVersion []int
+		expected       bool
+	}{
+		"enabled when output set and buildah >= 1.44.0": {
+			metadataOutput: "/shared/builder-metadata.json",
+			buildahVersion: []int{1, 44, 0},
+			expected:       true,
+		},
+		"enabled when buildah newer than 1.44.0": {
+			metadataOutput: "/shared/builder-metadata.json",
+			buildahVersion: []int{1, 45, 0},
+			expected:       true,
+		},
+		"disabled when output not set": {
+			metadataOutput: "",
+			buildahVersion: []int{1, 44, 0},
+			expected:       false,
+		},
+		"disabled when buildah < 1.44.0": {
+			metadataOutput: "/shared/builder-metadata.json",
+			buildahVersion: []int{1, 43, 0},
+			expected:       false,
+		},
+		"disabled when both missing": {
+			metadataOutput: "",
+			buildahVersion: []int{1, 43, 0},
+			expected:       false,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			g := NewWithT(t)
+			c := &Build{
+				Params:               &BuildParams{BuilderMetadataOutput: tc.metadataOutput},
+				parsedBuildahVersion: tc.buildahVersion,
+			}
+			g.Expect(c.enableBuilderContentScanning()).To(Equal(tc.expected))
+		})
+	}
+}
+
 func Test_Build_detectContainerfile(t *testing.T) {
 	g := NewWithT(t)
 
