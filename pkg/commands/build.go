@@ -2822,8 +2822,19 @@ func (c *Build) scanBuilderContent() (err error) {
 		return fmt.Errorf("parsing containerfile with capo: %w", err)
 	}
 
+	var selectCatalogers []string
+	for _, s := range strings.Split(c.Params.SyftSelectCatalogers, ",") {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		selectCatalogers = append(selectCatalogers, s)
+	}
+
 	scanner, err := capo.NewScanner(
 		capo.WithLogger(slog.New(sloglogrus.Option{Logger: l.Logger}.NewLogrusHandler())),
+		capo.WithDefaultCatalogersTag("image"),
+		capo.WithSelectCatalogers(selectCatalogers...),
 	)
 	if err != nil {
 		return fmt.Errorf("creating capo scanner: %w", err)

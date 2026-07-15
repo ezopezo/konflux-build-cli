@@ -4292,6 +4292,7 @@ COPY --from=builder /opt/go.mod /opt/go.mod
 				Context:               contextDir,
 				OutputRef:             outputRef,
 				BuilderMetadataOutput: "/workspace/builder-metadata.json",
+				SyftSelectCatalogers:  "+go-module-file-cataloger",
 			}
 
 			container := setupBuildContainerWithIsolatedStorage(t, buildParams)
@@ -4372,6 +4373,7 @@ RUN echo "this stage should be ignored"
 				OutputRef:             outputRef,
 				Target:                "middle",
 				BuilderMetadataOutput: "/workspace/builder-metadata.json",
+				SyftSelectCatalogers:  "+go-module-file-cataloger",
 			}
 
 			container := setupBuildContainerWithIsolatedStorage(t, buildParams)
@@ -4418,6 +4420,7 @@ COPY --from=builder $SRC/go.mod /opt/go.mod
 				OutputRef:             outputRef,
 				BuildArgs:             []string{"SRC=/opt"},
 				BuilderMetadataOutput: "/workspace/builder-metadata.json",
+				SyftSelectCatalogers:  "+go-module-file-cataloger",
 			}
 
 			container := setupBuildContainerWithIsolatedStorage(t, buildParams)
@@ -4467,6 +4470,7 @@ COPY --from=builder $SRC_PART_1$SRC_PART_2/go.mod /opt/go.mod
 				OutputRef:             outputRef,
 				BuildArgsFile:         "/workspace/build-args-file",
 				BuilderMetadataOutput: "/workspace/builder-metadata.json",
+				SyftSelectCatalogers:  "+go-module-file-cataloger",
 			}
 
 			container := setupBuildContainerWithIsolatedStorage(t, buildParams)
@@ -4513,6 +4517,7 @@ COPY --from=builder $SRC/go.mod /opt/go.mod
 				OutputRef:             outputRef,
 				Envs:                  []string{"SRC=/opt"},
 				BuilderMetadataOutput: "/workspace/builder-metadata.json",
+				SyftSelectCatalogers:  "+go-module-file-cataloger",
 			}
 
 			container := setupBuildContainerWithIsolatedStorage(t, buildParams)

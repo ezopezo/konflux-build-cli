@@ -6,7 +6,7 @@ require (
 	github.com/containerd/platforms v1.0.0-rc.2
 	github.com/containers/image/v5 v5.36.2
 	github.com/keilerkonzept/dockerfile-json v1.2.2
-	github.com/konflux-ci/capo v0.2.3-0.20260710084356-bc30d48265db
+	github.com/konflux-ci/capo v0.3.0
 	github.com/moby/buildkit v0.25.1
 	github.com/onsi/gomega v1.38.2
 	github.com/opencontainers/go-digest v1.0.0

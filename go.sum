@@ -1257,8 +1257,8 @@ github.com/klauspost/cpuid v1.2.0/go.mod h1:Pj4uuM528wm8OyEC2QMXAi2YiTZ96dNQPGgo
 github.com/klauspost/cpuid/v2 v2.0.9/go.mod h1:FInQzS24/EEf25PyTYn52gqo7WaD8xa0213Md/qVLRg=
 github.com/klauspost/pgzip v1.2.6 h1:8RXeL5crjEUFnR2/Sn6GJNWtSQ3Dk8pq4CL3jvdDyjU=
 github.com/klauspost/pgzip v1.2.6/go.mod h1:Ch1tH69qFZu15pkjo5kYi6mth2Zzwzt50oCQKQE9RUs=
-github.com/konflux-ci/capo v0.2.3-0.20260710084356-bc30d48265db h1:Uq6dK4Ga1sEJtPuB+vYzyeGa4DDMvuV3gKQ2zg42BwU=
-github.com/konflux-ci/capo v0.2.3-0.20260710084356-bc30d48265db/go.mod h1:RdBRWaqqeFCTpncA58BqDLiCIbhH9q4B73AM//QMqgM=
+github.com/konflux-ci/capo v0.3.0 h1:Lx/scJzaKytR604pZfZIORB8ZTaAd2C+fViSun8NAvk=
+github.com/konflux-ci/capo v0.3.0/go.mod h1:RdBRWaqqeFCTpncA58BqDLiCIbhH9q4B73AM//QMqgM=
 github.com/konflux-ci/dockerfile-json v0.0.0-20260617133258-290fb3e2de6c h1:ptX9TQUcTu5DmWZa4i0WlUTzeezwqFlCc0oW+tz0Ev8=
 github.com/konflux-ci/dockerfile-json v0.0.0-20260617133258-290fb3e2de6c/go.mod h1:yxjG+XR5PFZ3At1uq/t9bYjPDejR5hiGaTnZuBGBwec=
 github.com/konsorten/go-windows-terminal-sequences v1.0.1/go.mod h1:T0+1ngSBFLxvqU3pZ+m/2kptfBszLMUkC4ZK/EgS/cQ=
