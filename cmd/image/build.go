@@ -113,6 +113,10 @@ Examples:
   # Build and push to registry
   konflux-build-cli image build -t quay.io/myorg/myimage:latest --push
 
+  # Build and push with additional tags (e.g., version, commit SHA)
+  konflux-build-cli image build -t quay.io/myorg/myimage:latest \
+    --additional-tags v1.0.0 commit-abc123 --push
+
   # Build with explicit Containerfile and context
   konflux-build-cli image build -f ./Containerfile -c ./myapp -t quay.io/myorg/myimage:v1.0.0
 
