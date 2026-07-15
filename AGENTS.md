@@ -25,6 +25,11 @@ Run these commands before submitting changes:
 - `make lint` — run golangci-lint (installs automatically)
 - `make fmt` — format code
 
+## Integration Test Conventions
+
+When asserting on build stderr in `image build` integration tests, call
+`filterBuildahSteps` first to strip buildah's echoed RUN instructions.
+
 ## References
 
 [Documentation index](docs/index.md) which includes all docs articles.

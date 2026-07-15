@@ -12,6 +12,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
@@ -427,6 +428,31 @@ func runBuildWithOutput(container *TestRunnerContainer, buildParams BuildParams)
 	}
 
 	return container.ExecuteCommandWithOutput(KonfluxBuildCli, args...)
+}
+
+// buildahStepLine matches buildah's instruction echo lines.
+// The leading .* is necessary because these lines are prefixed with logger
+// metadata and the CLI's "buildah [stdout]" prefix. For multistage builds,
+// buildah itself adds a stage prefix, e.g. "[1/3] STEP 1/2: ...".
+var buildahStepLine = regexp.MustCompile(`(?m)^.*STEP \d+[^:]*:.*\n?`)
+
+// filterBuildahSteps removes buildah STEP instruction echo lines from output,
+// leaving only actual command output. This prevents false-positive substring
+// assertions that would otherwise match the echoed RUN instruction text.
+// It fails the test if the output is non-empty but no STEP lines were found,
+// which would indicate that buildah's output format has changed.
+//
+// Because of the fatal guard, only use this function on success-path call sites
+// where the build is expected to succeed and produce STEP lines. Do not use it
+// on error-path call sites where stderr may not contain any STEP lines.
+func filterBuildahSteps(t testing.TB, output string) string {
+	t.Helper()
+	filtered := buildahStepLine.ReplaceAllString(output, "")
+	if output != "" && filtered == output {
+		t.Fatal("filterBuildahSteps: no buildah STEP lines found in output; " +
+			"buildah's output format may have changed")
+	}
+	return filtered
 }
 
 // Creates a temporary directory for the test and registers cleanup.
@@ -1012,6 +1038,7 @@ LABEL test.label="secret-dirs-test"
 
 		_, stderr, err := runBuildWithOutput(container, buildParams)
 		Expect(err).ToNot(HaveOccurred())
+		stderr = filterBuildahSteps(t, stderr)
 
 		// Verify that the secret values appear in the build output (stderr contains build logs)
 		Expect(stderr).To(ContainSubstring("token=secret-token-value"))
@@ -2442,6 +2469,7 @@ FROM image.does.not/exist:1 AS stage-after-target
 
 		_, stderr, err := runBuildWithOutput(container, buildParams)
 		Expect(err).ToNot(HaveOccurred())
+		stderr = filterBuildahSteps(t, stderr)
 
 		// Stage 0 should be built despite not being needed
 		Expect(stderr).To(ContainSubstring("stage 0 was built"))
@@ -2537,6 +2565,7 @@ RUN if echo > /dev/tcp/8.8.8.8/53; then echo "Has network access!"; exit 1; fi
 
 				_, stderr, err := runBuildWithOutput(container, buildParams)
 				Expect(err).ToNot(HaveOccurred())
+				stderr = filterBuildahSteps(t, stderr)
 
 				// kbc prints the build logs to stderr
 				Expect(stderr).To(ContainSubstring("/dev/tcp/8.8.8.8/53: Network is unreachable"))
@@ -2682,6 +2711,7 @@ RUN cp /random-data.bin /data/realBaseImage.bin
 			_, stderr, err := runBuildWithOutput(container, buildParams)
 			// Main check: no error (would fail without pre-pulling)
 			Expect(err).ToNot(HaveOccurred())
+			stderr = filterBuildahSteps(t, stderr)
 
 			// Verify that buildah really did build the unused stage (otherwise we wasted a pull)
 			Expect(stderr).To(ContainSubstring("the unused stage WAS built"))
@@ -2714,6 +2744,7 @@ RUN cp /random-data.bin /data/realBaseImage.bin
 
 				_, stderr, err = runBuildWithOutput(container, buildParams)
 				Expect(err).ToNot(HaveOccurred())
+				stderr = filterBuildahSteps(t, stderr)
 
 				labels := getImageMeta(container, outputRef).labels
 				Expect(labels).To(HaveKeyWithValue("base1.real_index", "1"),
@@ -2976,6 +3007,7 @@ RUN --mount=from=base,src=/etc/os-release,dst=/tmp/os-release \
 
 			_, stderr, err := runBuildWithOutput(container, buildParams)
 			Expect(err).ToNot(HaveOccurred())
+			stderr = filterBuildahSteps(t, stderr)
 
 			Expect(stderr).To(ContainSubstring("mount worked"))
 			Expect(stderr).To(ContainSubstring("base: PREFETCH_ENV_VAR=foo"))
@@ -3028,6 +3060,7 @@ RUN echo "RUN 6: PREFETCH_ENV_VAR=${PREFETCH_ENV_VAR-unset}" # And this works as
 			container := setupBuildContainerWithCleanup(t, buildParams, nil)
 			_, stderr, err := runBuildWithOutput(container, buildParams)
 			Expect(err).ToNot(HaveOccurred())
+			stderr = filterBuildahSteps(t, stderr)
 			Expect(stderr).To(ContainSubstring("RUN 1: PREFETCH_ENV_VAR=unset"))
 			Expect(stderr).To(ContainSubstring("RUN 2: PREFETCH_ENV_VAR=unset"))
 			Expect(stderr).To(ContainSubstring("RUN 3: PREFETCH_ENV_VAR=unset"))
@@ -3044,6 +3077,7 @@ RUN echo "RUN 6: PREFETCH_ENV_VAR=${PREFETCH_ENV_VAR-unset}" # And this works as
 				WithVolumeWithOptions(prefetchDir, "/prefetch", "z"))
 			_, stderr, err = runBuildWithOutput(container, buildParams)
 			Expect(err).ToNot(HaveOccurred())
+			stderr = filterBuildahSteps(t, stderr)
 			Expect(stderr).To(ContainSubstring("RUN 1: PREFETCH_ENV_VAR=foo"))
 			Expect(stderr).To(ContainSubstring("RUN 2: PREFETCH_ENV_VAR=foo"))
 			Expect(stderr).To(ContainSubstring("RUN 3: PREFETCH_ENV_VAR=foo"))
@@ -3088,6 +3122,7 @@ RUN ["/bin/sh", "-c", "echo \"exec: PREFETCH_ENV_VAR=${PREFETCH_ENV_VAR-unset}\"
 
 			_, stderr, err := runBuildWithOutput(container, buildParams)
 			Expect(err).ToNot(HaveOccurred())
+			stderr = filterBuildahSteps(t, stderr)
 
 			Expect(stderr).To(ContainSubstring("heredoc: PREFETCH_ENV_VAR=unset"))
 			Expect(stderr).To(ContainSubstring("exec: PREFETCH_ENV_VAR=unset"))
@@ -3143,6 +3178,7 @@ RUN if [ ! -e /tmp/.prefetch.env ]; then \
 
 			_, stderr, err := runBuildWithOutput(container, buildParams)
 			Expect(err).ToNot(HaveOccurred())
+			stderr = filterBuildahSteps(t, stderr)
 
 			Expect(stderr).To(ContainSubstring("Using buildah secret env mounts"))
 
@@ -3206,6 +3242,7 @@ EOF
 
 			_, stderr, err := runBuildWithOutput(container, buildParams)
 			Expect(err).ToNot(HaveOccurred())
+			stderr = filterBuildahSteps(t, stderr)
 
 			// RUN instruction was handled as expected
 			Expect(stderr).To(ContainSubstring("Run: echo PREFETCH_ENV_VAR=foo"))
@@ -3380,6 +3417,7 @@ RUN echo "hermeto.repo=$(cat /etc/yum.repos.d/hermeto.repo)"
 
 		_, stderr, err := runBuildWithOutput(container, buildParams)
 		Expect(err).ToNot(HaveOccurred())
+		stderr = filterBuildahSteps(t, stderr)
 
 		Expect(stderr).To(ContainSubstring("my.repo=[my-repo]"))
 		Expect(stderr).To(ContainSubstring("hermeto.repo=[hermeto-repo]"))
@@ -3564,6 +3602,7 @@ EOF
 
 			_, stderr, err := runBuildWithOutput(container, buildParams)
 			Expect(err).ToNot(HaveOccurred())
+			stderr = filterBuildahSteps(t, stderr)
 
 			Expect(stderr).To(ContainSubstring("OK: entitlements from host NOT mounted"))
 			Expect(stderr).To(ContainSubstring("OK: rhsm from host NOT mounted"))
@@ -3616,6 +3655,7 @@ RUN echo modified > /etc/pki/entitlement/cert.pem && \
 
 			_, stderr, err := runBuildWithOutput(container, buildParams)
 			Expect(err).ToNot(HaveOccurred())
+			stderr = filterBuildahSteps(t, stderr)
 
 			Expect(stderr).To(ContainSubstring("cert.pem=entitlement-cert"))
 			Expect(stderr).To(ContainSubstring("cert-key.pem=entitlement-key"))
@@ -3680,6 +3720,7 @@ RUN echo modified > /activation-key/activationkey && \
 
 			_, stderr, err := runBuildWithOutput(container, buildParams)
 			Expect(err).ToNot(HaveOccurred())
+			stderr = filterBuildahSteps(t, stderr)
 
 			Expect(stderr).To(ContainSubstring("activationkey=my-activation-key"))
 			Expect(stderr).To(ContainSubstring("org=my-org"))
@@ -3785,6 +3826,7 @@ EOF
 
 		_, stderr, err := runBuildWithOutput(container, buildParams)
 		Expect(err).ToNot(HaveOccurred())
+		stderr = filterBuildahSteps(t, stderr)
 		// Should have dropped everything but the first 3 caps (0...00111 binary)
 		Expect(stderr).To(ContainSubstring("CapEff: 0000000000000007"))
 	})
@@ -3869,6 +3911,7 @@ EOF
 			container := setupBuildContainerWithCleanup(t, buildParams, imageRegistry)
 			_, stderr, err := runBuildWithOutput(container, buildParams)
 			Expect(err).ToNot(HaveOccurred())
+			stderr = filterBuildahSteps(t, stderr)
 			Expect(stderr).To(ContainSubstring("Cross-platform copy is a risky operation"))
 		})
 
@@ -3887,6 +3930,7 @@ EOF
 			container := setupBuildContainerWithCleanup(t, buildParams, imageRegistry)
 			_, stderr, err := runBuildWithOutput(container, buildParams)
 			Expect(err).ToNot(HaveOccurred())
+			stderr = filterBuildahSteps(t, stderr)
 			Expect(stderr).ToNot(ContainSubstring("Cross-platform copy is a risky operation"))
 		})
 
@@ -3907,6 +3951,7 @@ EOF
 			container := setupBuildContainerWithCleanup(t, buildParams, imageRegistry)
 			_, stderr, err := runBuildWithOutput(container, buildParams)
 			Expect(err).ToNot(HaveOccurred())
+			stderr = filterBuildahSteps(t, stderr)
 			Expect(stderr).To(ContainSubstring("Cross-platform copy is a risky operation"))
 		})
 
@@ -3933,6 +3978,7 @@ EOF
 				maybeMountContainerStorage(newStorage, "taskuser"))
 			_, stderr, err := runBuildWithOutput(container, buildParams)
 			Expect(err).ToNot(HaveOccurred())
+			stderr = filterBuildahSteps(t, stderr)
 			Expect(stderr).To(ContainSubstring("Cross-platform copy is a risky operation"))
 		})
 
