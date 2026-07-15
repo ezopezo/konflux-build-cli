@@ -59,7 +59,7 @@ func NewBuildahCli(executor CliExecutorInterface) (*BuildahCli, error) {
 type BuildahBuildArgs struct {
 	Containerfile    string
 	ContextDir       string
-	OutputRef        string
+	Tags             []string
 	Secrets          []BuildahSecret
 	Mounts           []BuildahMount
 	Volumes          []BuildahVolume
@@ -126,8 +126,8 @@ func (args *BuildahBuildArgs) Validate() error {
 	if args.ContextDir == "" {
 		return errors.New("context directory is empty")
 	}
-	if args.OutputRef == "" {
-		return errors.New("output-ref is empty")
+	if len(args.Tags) == 0 {
+		return errors.New("tags are empty")
 	}
 	for _, mount := range args.Mounts {
 		if mount.Type == "" {
@@ -211,7 +211,10 @@ func (b *BuildahCli) Build(args *BuildahBuildArgs) error {
 		return fmt.Errorf("validating buildah args: %w", err)
 	}
 
-	buildahArgs := []string{"build", "--file", args.Containerfile, "--tag", args.OutputRef}
+	buildahArgs := []string{"build", "--file", args.Containerfile}
+	for _, tag := range args.Tags {
+		buildahArgs = append(buildahArgs, "--tag", tag)
+	}
 
 	for _, secret := range args.Secrets {
 		secretArg := "src=" + secret.Src + ",id=" + secret.Id

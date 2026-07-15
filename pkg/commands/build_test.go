@@ -418,6 +418,26 @@ func Test_Build_validateParams(t *testing.T) {
 			errSubstring: "no such file or directory",
 		},
 		{
+			name: "should allow valid additional tags",
+			params: BuildParams{
+				OutputRef:      "quay.io/org/image:tag",
+				Context:        tempDir,
+				AdditionalTags: []string{"v1", "v1.0.0", "latest"},
+				SBOMFormat:     "spdx",
+			},
+			errExpected: false,
+		},
+		{
+			name: "should fail on invalid additional tag",
+			params: BuildParams{
+				OutputRef:      "quay.io/org/image:tag",
+				Context:        tempDir,
+				AdditionalTags: []string{"v1", "invalid tag!"},
+			},
+			errExpected:  true,
+			errSubstring: "invalid additional tag: invalid tag!",
+		},
+		{
 			name: "should accept valid sbom-format spdx",
 			params: BuildParams{
 				OutputRef:  "quay.io/org/image:tag",
@@ -1353,7 +1373,7 @@ func Test_Build_Run(t *testing.T) {
 		isBuildCalled := false
 		_mockBuildahCli.BuildFunc = func(args *cliwrappers.BuildahBuildArgs) error {
 			isBuildCalled = true
-			g.Expect(args.OutputRef).To(Equal("quay.io/org/image:tag"))
+			g.Expect(args.Tags).To(Equal([]string{"quay.io/org/image:tag"}))
 			g.Expect(args.ContextDir).To(Equal(c.Params.Context))
 			g.Expect(args.Containerfile).To(ContainSubstring("Containerfile"))
 			return nil
@@ -1390,7 +1410,7 @@ func Test_Build_Run(t *testing.T) {
 		isBuildCalled := false
 		_mockBuildahCli.BuildFunc = func(args *cliwrappers.BuildahBuildArgs) error {
 			isBuildCalled = true
-			g.Expect(args.OutputRef).To(Equal("quay.io/org/image:tag"))
+			g.Expect(args.Tags).To(Equal([]string{"quay.io/org/image:tag"}))
 			return nil
 		}
 
@@ -1415,6 +1435,37 @@ func Test_Build_Run(t *testing.T) {
 		g.Expect(isBuildCalled).To(BeTrue())
 		g.Expect(isPushCalled).To(BeFalse())
 		g.Expect(isCreateResultJsonCalled).To(BeTrue())
+	})
+
+	t.Run("should build and push with additional tags", func(t *testing.T) {
+		beforeEach()
+		c.Params.AdditionalTags = []string{"v1", "v1.0.0"}
+
+		isBuildCalled := false
+		_mockBuildahCli.BuildFunc = func(args *cliwrappers.BuildahBuildArgs) error {
+			isBuildCalled = true
+			g.Expect(args.Tags).To(Equal([]string{
+				"quay.io/org/image:tag",
+				"quay.io/org/image:v1",
+				"quay.io/org/image:v1.0.0",
+			}))
+			return nil
+		}
+
+		pushedImages := []string{}
+		_mockBuildahCli.PushFunc = func(args *cliwrappers.BuildahPushArgs) (string, error) {
+			pushedImages = append(pushedImages, args.Image)
+			return "sha256:1234567890abcdef", nil
+		}
+
+		err := c.run()
+		g.Expect(err).ToNot(HaveOccurred())
+		g.Expect(isBuildCalled).To(BeTrue())
+		g.Expect(pushedImages).To(Equal([]string{
+			"quay.io/org/image:tag",
+			"quay.io/org/image:v1",
+			"quay.io/org/image:v1.0.0",
+		}))
 	})
 
 	t.Run("should pass buildahSecrets to buildah build", func(t *testing.T) {

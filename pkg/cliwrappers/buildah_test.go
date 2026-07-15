@@ -57,7 +57,7 @@ func TestBuildahCli_Build(t *testing.T) {
 		buildArgs := &cliwrappers.BuildahBuildArgs{
 			Containerfile: containerfile,
 			ContextDir:    contextDir,
-			OutputRef:     outputRef,
+			Tags:          []string{outputRef},
 		}
 
 		err := buildahCli.Build(buildArgs)
@@ -79,7 +79,7 @@ func TestBuildahCli_Build(t *testing.T) {
 		buildArgs := &cliwrappers.BuildahBuildArgs{
 			Containerfile: containerfile,
 			ContextDir:    contextDir,
-			OutputRef:     outputRef,
+			Tags:          []string{outputRef},
 		}
 
 		err := buildahCli.Build(buildArgs)
@@ -93,7 +93,7 @@ func TestBuildahCli_Build(t *testing.T) {
 		buildArgs := &cliwrappers.BuildahBuildArgs{
 			Containerfile: "",
 			ContextDir:    contextDir,
-			OutputRef:     outputRef,
+			Tags:          []string{outputRef},
 		}
 		err := buildahCli.Build(buildArgs)
 		g.Expect(err).To(HaveOccurred())
@@ -112,7 +112,7 @@ func TestBuildahCli_Build(t *testing.T) {
 		buildArgs := &cliwrappers.BuildahBuildArgs{
 			Containerfile: containerfile,
 			ContextDir:    contextDir,
-			OutputRef:     outputRef,
+			Tags:          []string{outputRef},
 			Secrets: []cliwrappers.BuildahSecret{
 				{Src: "/some/file", Id: "mysecret_1"},
 				{Src: "/other/file", Id: "mysecret_2"},
@@ -138,7 +138,7 @@ func TestBuildahCli_Build(t *testing.T) {
 		buildArgs := &cliwrappers.BuildahBuildArgs{
 			Containerfile: containerfile,
 			ContextDir:    contextDir,
-			OutputRef:     outputRef,
+			Tags:          []string{outputRef},
 			Secrets: []cliwrappers.BuildahSecret{
 				{Src: "/some/file", Id: "GOMODCACHE"},
 				{Src: "/other/file", Id: "regular_secret"},
@@ -169,7 +169,7 @@ func TestBuildahCli_Build(t *testing.T) {
 		buildArgs := &cliwrappers.BuildahBuildArgs{
 			Containerfile: containerfile,
 			ContextDir:    contextDir,
-			OutputRef:     outputRef,
+			Tags:          []string{outputRef},
 			Volumes: []cliwrappers.BuildahVolume{
 				{HostDir: "/host/dir1", ContainerDir: "/container/dir1", Options: ""},
 				{HostDir: "/host/dir2", ContainerDir: "/container/dir2", Options: "ro"},
@@ -195,7 +195,7 @@ func TestBuildahCli_Build(t *testing.T) {
 		buildArgs := &cliwrappers.BuildahBuildArgs{
 			Containerfile: containerfile,
 			ContextDir:    contextDir,
-			OutputRef:     outputRef,
+			Tags:          []string{outputRef},
 			BuildContexts: []cliwrappers.BuildahBuildContext{
 				{Name: "context1", Location: "context/dir/a"},
 				{Name: "context2", Location: "/absolute/context/dir/b"},
@@ -221,7 +221,7 @@ func TestBuildahCli_Build(t *testing.T) {
 		buildArgs := &cliwrappers.BuildahBuildArgs{
 			Containerfile: containerfile,
 			ContextDir:    contextDir,
-			OutputRef:     outputRef,
+			Tags:          []string{outputRef},
 			BuildArgs:     []string{"VERSION=1.0.0", "BUILD_DATE=2024-01-01"},
 			BuildArgsFile: "/path/to/build-args-file",
 		}
@@ -246,7 +246,7 @@ func TestBuildahCli_Build(t *testing.T) {
 		buildArgs := &cliwrappers.BuildahBuildArgs{
 			Containerfile: containerfile,
 			ContextDir:    contextDir,
-			OutputRef:     outputRef,
+			Tags:          []string{outputRef},
 			Envs:          []string{"FOO=bar", "BAZ=qux"},
 		}
 
@@ -269,7 +269,7 @@ func TestBuildahCli_Build(t *testing.T) {
 		buildArgs := &cliwrappers.BuildahBuildArgs{
 			Containerfile: containerfile,
 			ContextDir:    contextDir,
-			OutputRef:     outputRef,
+			Tags:          []string{outputRef},
 			ExtraArgs:     []string{"--compat-volumes", "--force-rm"},
 		}
 
@@ -297,7 +297,7 @@ func TestBuildahCli_Build(t *testing.T) {
 		}
 
 		err := buildahCli.Build(&cliwrappers.BuildahBuildArgs{
-			Containerfile: containerfile, ContextDir: contextDir, OutputRef: outputRef,
+			Containerfile: containerfile, ContextDir: contextDir, Tags: []string{outputRef},
 		})
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(capturedArgs).ToNot(ContainElement(ContainSubstring("--tls-verify")))
@@ -312,7 +312,7 @@ func TestBuildahCli_Build(t *testing.T) {
 		}
 
 		err := buildahCli.Build(&cliwrappers.BuildahBuildArgs{
-			Containerfile: containerfile, ContextDir: contextDir, OutputRef: outputRef,
+			Containerfile: containerfile, ContextDir: contextDir, Tags: []string{outputRef},
 			TLSVerify: boolPtr(true),
 		})
 		g.Expect(err).ToNot(HaveOccurred())
@@ -328,7 +328,7 @@ func TestBuildahCli_Build(t *testing.T) {
 		}
 
 		err := buildahCli.Build(&cliwrappers.BuildahBuildArgs{
-			Containerfile: containerfile, ContextDir: contextDir, OutputRef: outputRef,
+			Containerfile: containerfile, ContextDir: contextDir, Tags: []string{outputRef},
 			NoCache: true,
 		})
 		g.Expect(err).ToNot(HaveOccurred())
@@ -344,7 +344,7 @@ func TestBuildahCli_Build(t *testing.T) {
 		}
 
 		err := buildahCli.Build(&cliwrappers.BuildahBuildArgs{
-			Containerfile: containerfile, ContextDir: contextDir, OutputRef: outputRef,
+			Containerfile: containerfile, ContextDir: contextDir, Tags: []string{outputRef},
 			SecurityOpts: []string{"seccomp=unconfined", "label=disable"},
 		})
 		g.Expect(err).ToNot(HaveOccurred())
@@ -362,7 +362,7 @@ func TestBuildahCli_Build(t *testing.T) {
 		}
 
 		err := buildahCli.Build(&cliwrappers.BuildahBuildArgs{
-			Containerfile: containerfile, ContextDir: contextDir, OutputRef: outputRef,
+			Containerfile: containerfile, ContextDir: contextDir, Tags: []string{outputRef},
 			CapAdd:  []string{"ALL", "SYS_ADMIN"},
 			CapDrop: []string{"MKNOD", "CAP_SETUID,CAP_SETGID"},
 		})
@@ -383,7 +383,7 @@ func TestBuildahCli_Build(t *testing.T) {
 		}
 
 		err := buildahCli.Build(&cliwrappers.BuildahBuildArgs{
-			Containerfile: containerfile, ContextDir: contextDir, OutputRef: outputRef,
+			Containerfile: containerfile, ContextDir: contextDir, Tags: []string{outputRef},
 			Devices: []string{"/dev/fuse", "/dev/sdc"},
 		})
 		g.Expect(err).ToNot(HaveOccurred())
@@ -401,7 +401,7 @@ func TestBuildahCli_Build(t *testing.T) {
 		}
 
 		err := buildahCli.Build(&cliwrappers.BuildahBuildArgs{
-			Containerfile: containerfile, ContextDir: contextDir, OutputRef: outputRef,
+			Containerfile: containerfile, ContextDir: contextDir, Tags: []string{outputRef},
 			Ulimits: []string{"nofile=4096:4096", "nproc=1024:2048"},
 		})
 		g.Expect(err).ToNot(HaveOccurred())
@@ -419,7 +419,7 @@ func TestBuildahCli_Build(t *testing.T) {
 		}
 
 		err := buildahCli.Build(&cliwrappers.BuildahBuildArgs{
-			Containerfile: containerfile, ContextDir: contextDir, OutputRef: outputRef,
+			Containerfile: containerfile, ContextDir: contextDir, Tags: []string{outputRef},
 			SaveStages: true, StageLabels: true,
 		})
 		g.Expect(err).ToNot(HaveOccurred())
@@ -436,7 +436,7 @@ func TestBuildahCli_Build(t *testing.T) {
 		}
 
 		err := buildahCli.Build(&cliwrappers.BuildahBuildArgs{
-			Containerfile: containerfile, ContextDir: contextDir, OutputRef: outputRef,
+			Containerfile: containerfile, ContextDir: contextDir, Tags: []string{outputRef},
 		})
 		g.Expect(err).ToNot(HaveOccurred())
 		g.Expect(capturedArgs).ToNot(ContainElement("--save-stages"))
@@ -1094,7 +1094,7 @@ func TestBuildahBuildArgs_Validate(t *testing.T) {
 		args := &cliwrappers.BuildahBuildArgs{
 			Containerfile: containerfile,
 			ContextDir:    contextDir,
-			OutputRef:     outputRef,
+			Tags:          []string{outputRef},
 		}
 
 		err := args.Validate()
@@ -1105,7 +1105,7 @@ func TestBuildahBuildArgs_Validate(t *testing.T) {
 		args := &cliwrappers.BuildahBuildArgs{
 			Containerfile: "",
 			ContextDir:    contextDir,
-			OutputRef:     outputRef,
+			Tags:          []string{outputRef},
 		}
 
 		err := args.Validate()
@@ -1117,7 +1117,7 @@ func TestBuildahBuildArgs_Validate(t *testing.T) {
 		args := &cliwrappers.BuildahBuildArgs{
 			Containerfile: containerfile,
 			ContextDir:    "",
-			OutputRef:     outputRef,
+			Tags:          []string{outputRef},
 		}
 
 		err := args.Validate()
@@ -1125,23 +1125,22 @@ func TestBuildahBuildArgs_Validate(t *testing.T) {
 		g.Expect(err.Error()).To(Equal("context directory is empty"))
 	})
 
-	t.Run("should error if output-ref is empty", func(t *testing.T) {
+	t.Run("should error if tags are empty", func(t *testing.T) {
 		args := &cliwrappers.BuildahBuildArgs{
 			Containerfile: containerfile,
 			ContextDir:    contextDir,
-			OutputRef:     "",
 		}
 
 		err := args.Validate()
 		g.Expect(err).To(HaveOccurred())
-		g.Expect(err.Error()).To(Equal("output-ref is empty"))
+		g.Expect(err.Error()).To(Equal("tags are empty"))
 	})
 
 	t.Run("should error when volume HostDir contains ':'", func(t *testing.T) {
 		args := &cliwrappers.BuildahBuildArgs{
 			Containerfile: containerfile,
 			ContextDir:    contextDir,
-			OutputRef:     outputRef,
+			Tags:          []string{outputRef},
 			Volumes:       []cliwrappers.BuildahVolume{{HostDir: "some:dir", ContainerDir: "/foo"}},
 		}
 
@@ -1154,7 +1153,7 @@ func TestBuildahBuildArgs_Validate(t *testing.T) {
 		args := &cliwrappers.BuildahBuildArgs{
 			Containerfile: containerfile,
 			ContextDir:    contextDir,
-			OutputRef:     outputRef,
+			Tags:          []string{outputRef},
 			Volumes:       []cliwrappers.BuildahVolume{{HostDir: "/foo", ContainerDir: "other:dir"}},
 		}
 

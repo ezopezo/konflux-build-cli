@@ -77,13 +77,20 @@ var BuildParamsConfig = map[string]common.Parameter{
 		Usage:      `The reference of the output image - [registry/namespace/]name[:tag]. Required.`,
 		Required:   true,
 	},
+	"additional-tags": {
+		Name:       "additional-tags",
+		ShortName:  "",
+		EnvVarName: "KBC_BUILD_ADDITIONAL_TAGS",
+		TypeKind:   reflect.Slice,
+		Usage:      "Additional tags to apply to the output image.",
+	},
 	"push": {
 		Name:         "push",
 		ShortName:    "",
 		EnvVarName:   "KBC_BUILD_PUSH",
 		TypeKind:     reflect.Bool,
 		DefaultValue: "false",
-		Usage:        "Push the built image to the registry.",
+		Usage:        "Push the built image (and its additional tags, if any) to the registry.",
 	},
 	"secret-dirs": {
 		Name:       "secret-dirs",
@@ -462,6 +469,7 @@ type BuildParams struct {
 	Context                    string   `paramName:"context"`
 	Source                     string   `paramName:"source"`
 	OutputRef                  string   `paramName:"output-ref"`
+	AdditionalTags             []string `paramName:"additional-tags"`
 	Push                       bool     `paramName:"push"`
 	SecretDirs                 []string `paramName:"secret-dirs"`
 	WorkdirMount               string   `paramName:"workdir-mount"`
@@ -841,6 +849,12 @@ func (c *Build) run() error {
 func (c *Build) validateParams() error {
 	if !common.IsImageNameValid(common.GetImageName(c.Params.OutputRef)) {
 		return fmt.Errorf("output-ref '%s' is invalid", c.Params.OutputRef)
+	}
+
+	for _, tag := range c.Params.AdditionalTags {
+		if !common.IsImageTagValid(tag) {
+			return fmt.Errorf("invalid additional tag: %s", tag)
+		}
 	}
 
 	if stat, err := os.Stat(c.effectiveContextDir()); err != nil {
@@ -2536,6 +2550,15 @@ func getFromRefsInCommands(stage *dockerfile.Stage) []string {
 	return refs
 }
 
+func (c *Build) allTags() []string {
+	tags := []string{c.Params.OutputRef}
+	imageName := common.GetImageName(c.Params.OutputRef)
+	for _, tag := range c.Params.AdditionalTags {
+		tags = append(tags, imageName+":"+tag)
+	}
+	return tags
+}
+
 func (c *Build) buildImage() (err error) {
 	l.Logger.Info("Building container image...")
 
@@ -2561,7 +2584,7 @@ func (c *Build) buildImage() (err error) {
 	buildArgs := &cliWrappers.BuildahBuildArgs{
 		Containerfile:    containerfilePath,
 		ContextDir:       c.effectiveContextDir(),
-		OutputRef:        c.Params.OutputRef,
+		Tags:             c.allTags(),
 		Secrets:          c.buildahSecrets,
 		Mounts:           c.buildahMounts,
 		Volumes:          c.buildahVolumes,
@@ -2715,11 +2738,26 @@ func (c *Build) pushImage() (string, error) {
 
 	digest, err := c.CliWrappers.BuildahCli.Push(pushArgs)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("pushing image %s: %w", c.Params.OutputRef, err)
 	}
 
 	l.Logger.Info("Push completed successfully")
 	l.Logger.Infof("Image digest: %s", digest)
+
+	imageName := common.GetImageName(c.Params.OutputRef)
+	for _, tag := range c.Params.AdditionalTags {
+		additionalImage := imageName + ":" + tag
+		l.Logger.Infof("Pushing additional tag: %s", tag)
+
+		_, err := c.CliWrappers.BuildahCli.Push(&cliWrappers.BuildahPushArgs{
+			Image:     additionalImage,
+			TLSVerify: &c.Params.DestTLSVerify,
+		})
+		if err != nil {
+			return "", fmt.Errorf("pushing additional tag %s: %w", tag, err)
+		}
+		l.Logger.Infof("Pushed additional tag successfully: %s", tag)
+	}
 
 	return digest, nil
 }
