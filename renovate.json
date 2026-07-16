@@ -18,7 +18,7 @@
   "gomod": {
     "packageRules": [
       {
-        "description": "Disable indirect Go dependency updates (MVS handles these)",
+        "description": "Disable Go indirect dependency updates",
         "matchManagers": ["gomod"],
         "matchDepTypes": ["indirect"],
         "enabled": false
