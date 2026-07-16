@@ -2822,6 +2822,9 @@ func (c *Build) scanBuilderContent() (err error) {
 		return fmt.Errorf("parsing containerfile with capo: %w", err)
 	}
 
+	// Split the comma-separated cataloger selection, similarly to Syft's internal logic:
+	// https://github.com/anchore/syft/blob/2805655ab04603446a5422905d32cb953b560556/cmd/syft/internal/commands/cataloger_info.go#L107
+	// https://github.com/anchore/syft/blob/2805655ab04603446a5422905d32cb953b560556/cmd/syft/internal/options/catalog.go#L288
 	var selectCatalogers []string
 	for _, s := range strings.Split(c.Params.SyftSelectCatalogers, ",") {
 		s = strings.TrimSpace(s)
